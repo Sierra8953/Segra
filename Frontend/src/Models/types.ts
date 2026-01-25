@@ -1,6 +1,6 @@
 export type ContentType = 'Session' | 'Buffer' | 'Clip' | 'Highlight';
 
-export type RecordingMode = 'Session' | 'Buffer' | 'Hybrid';
+export type RecordingMode = 'Off' | 'Background' | 'Manual';
 
 export interface Content {
   type: ContentType;
@@ -16,6 +16,7 @@ export interface Content {
   uploadId?: string;
   igdbId?: number;
   isImported: boolean;
+  isLive?: boolean;
 }
 
 export interface OBSVersion {
@@ -89,6 +90,8 @@ export interface Recording {
   startTime: Date;
   endTime: Date;
   game: string;
+  fileName: string;
+  filePath: string;
   isUsingGameHook: boolean;
   coverImageId?: string;
   gameImage?: string; // Base64 encoded image of the game executable icon
@@ -173,6 +176,10 @@ export type ClipPreset =
 export type VideoQualityPreset = 'low' | 'standard' | 'high' | 'custom';
 export type ClipQualityPreset = 'low' | 'standard' | 'high' | 'custom';
 
+export interface GameConfig {
+  bufferDuration?: number;
+}
+
 export interface Settings {
   theme:
     | 'segra'
@@ -235,6 +242,7 @@ export interface Settings {
   videoQualityPreset: VideoQualityPreset;
   clipQualityPreset: ClipQualityPreset;
   removeOriginalAfterCompression: boolean;
+  gameSpecificConfig: Record<string, GameConfig>;
   state: State;
 }
 
@@ -281,7 +289,7 @@ export const initialSettings: Settings = {
   autoGenerateHighlights: true,
   runOnStartup: false,
   receiveBetaUpdates: false,
-  recordingMode: 'Hybrid',
+  recordingMode: 'Background',
   replayBufferDuration: 30,
   replayBufferMaxSize: 1000,
   clipClearSelectionsAfterCreatingClip: false,
@@ -308,6 +316,7 @@ export const initialSettings: Settings = {
   whitelist: [],
   blacklist: [],
   enableRocketLeagueIntegration: false,
+  gameSpecificConfig: {},
   state: initialState,
 };
 

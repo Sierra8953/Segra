@@ -166,7 +166,7 @@ namespace Segra.Backend.Services
                 if (matchesFileName || matchesRecordingPid || matchesPreRecordingPid)
                 {
                     Log.Information($"[OnTrackedProcessExited] Confirmed that PID {pid} is no longer running. Stopping recording.");
-                    _ = Task.Run(OBSService.StopRecording);
+                    _ = Task.Run(() => OBSService.StopRecording());
                 }
             }
             catch (Exception ex)
@@ -215,6 +215,22 @@ namespace Segra.Backend.Services
         private static bool ShouldRecordGame(string exePath, bool isPeriodicCheck = false)
         {
             if (string.IsNullOrEmpty(exePath) || Settings.Instance.State.Recording != null || Settings.Instance.State.PreRecording != null) return false;
+
+            // Check Recording Mode - only auto-record if in Background mode (formerly Buffer)
+            // Off: No recording
+            // Manual: Only manual start
+            if (Settings.Instance.RecordingMode == RecordingMode.Off || Settings.Instance.RecordingMode == RecordingMode.Manual)
+            {
+                // Only log this once per process to avoid spam, or just return false
+                // But since we don't track "seen" processes here easily, we rely on caller logic or just log.
+                // Actually, logging here might spam if periodic check calls it.
+                // But periodic check calls ShouldRecordGame(exePath, true).
+                if (!isPeriodicCheck)
+                {
+                     Log.Information($"[ShouldRecordGame] Skipping auto-record for {exePath} due to RecordingMode: {Settings.Instance.RecordingMode}");
+                }
+                return false;
+            }
 
             // Normalize path for consistent comparison
             string normalizedExePath = exePath.Replace("\\", "/");
@@ -496,7 +512,7 @@ namespace Segra.Backend.Services
                     if (recordingPid.HasValue && !IsProcessRunning(recordingPid.Value))
                     {
                         Log.Warning($"[ProcessCheck] Recording process PID {recordingPid} is no longer running. Stopping recording.");
-                        _ = Task.Run(OBSService.StopRecording);
+                        _ = Task.Run(() => OBSService.StopRecording());
                         return;
                     }
                     // Process is still running, no need to check for new games

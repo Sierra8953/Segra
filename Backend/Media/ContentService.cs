@@ -72,6 +72,8 @@ namespace Segra.Backend.Media
                 }
 
                 var duration = await GetVideoDurationAsync(filePath);
+                bool isLive = Path.GetExtension(filePath).Equals(".mpd", StringComparison.OrdinalIgnoreCase);
+
                 var metadataContent = new Content
                 {
                     Type = type,
@@ -86,7 +88,8 @@ namespace Segra.Backend.Media
                     Duration = duration,
                     AudioTrackNames = trackNames,
                     IgdbId = igdbId,
-                    IsImported = isImported
+                    IsImported = isImported,
+                    IsLive = isLive
                 };
 
                 string metadataJson = JsonSerializer.Serialize(metadataContent, _jsonOptions);
@@ -139,6 +142,12 @@ namespace Segra.Backend.Media
 
         public static async Task CreateThumbnail(string filePath, Content.ContentType type)
         {
+            if (Path.GetExtension(filePath).Equals(".mpd", StringComparison.OrdinalIgnoreCase))
+            {
+                Log.Information($"Skipping thumbnail generation for DASH manifest: {filePath}");
+                return;
+            }
+
             try
             {
                 // Get the directory and file name
@@ -171,6 +180,12 @@ namespace Segra.Backend.Media
 
         public static async Task CreateWaveformFile(string videoFilePath, Content.ContentType type)
         {
+            if (Path.GetExtension(videoFilePath).Equals(".mpd", StringComparison.OrdinalIgnoreCase))
+            {
+                Log.Information($"Skipping waveform generation for DASH manifest: {videoFilePath}");
+                return;
+            }
+
             try
             {
                 if (!FFmpegService.FFmpegExists())
@@ -313,44 +328,72 @@ namespace Segra.Backend.Media
                 string? videoDirectory = Path.GetDirectoryName(normalizedFilePath);
                 if (File.Exists(normalizedFilePath))
                 {
-                    int maxRetries = 3;
-                    for (int i = 0; i < maxRetries; i++)
+                    bool isDash = Path.GetExtension(normalizedFilePath).Equals(".mpd", StringComparison.OrdinalIgnoreCase);
+
+                    // For DASH content, if the file is in a dedicated folder (folder name == filename), delete the whole folder
+                    if (isDash && videoDirectory != null)
                     {
-                        try
+                        string fileNameNoExt = Path.GetFileNameWithoutExtension(normalizedFilePath);
+                        string parentDirName = new DirectoryInfo(videoDirectory).Name;
+
+                        if (parentDirName.Equals(fileNameNoExt, StringComparison.OrdinalIgnoreCase))
                         {
-                            File.Delete(normalizedFilePath);
-                            Log.Information($"Video file deleted: {normalizedFilePath}");
-                            break;
-                        }
-                        catch (IOException)
-                        {
-                            if (i == maxRetries - 1) throw; // Re-throw on last attempt
-                            Log.Warning($"File is locked, retrying deletion in 500ms... (Attempt {i + 1}/{maxRetries})");
-                            await Task.Delay(500);
+                             try
+                             {
+                                 Directory.Delete(videoDirectory, true);
+                                 Log.Information($"Deleted DASH session folder: {videoDirectory}");
+                                 // Set videoDirectory to null so we don't try to clean it up again below
+                                 videoDirectory = null;
+                             }
+                             catch (Exception ex)
+                             {
+                                 Log.Warning($"Failed to delete DASH session folder: {ex.Message}");
+                             }
                         }
                     }
 
-                    // Clean up empty game folder if it exists
-                    if (!string.IsNullOrEmpty(videoDirectory) && Directory.Exists(videoDirectory))
+                    // If videoDirectory is null, it means we already deleted the folder (DASH case)
+                    if (videoDirectory != null)
                     {
-                        try
+                        int maxRetries = 3;
+                        for (int i = 0; i < maxRetries; i++)
                         {
-                            // Only delete if the folder is empty and is a game subfolder (not the root video type folder)
-                            string contentRoot = Settings.Instance.ContentFolder;
-                            string[] rootFolders = { FolderNames.Sessions, FolderNames.Buffers, FolderNames.Clips, FolderNames.Highlights };
-                            bool isGameSubfolder = rootFolders.Any(rf =>
-                                videoDirectory.StartsWith(Path.Combine(contentRoot, rf), StringComparison.OrdinalIgnoreCase) &&
-                                !videoDirectory.Equals(Path.Combine(contentRoot, rf), StringComparison.OrdinalIgnoreCase));
-
-                            if (isGameSubfolder && !Directory.EnumerateFileSystemEntries(videoDirectory).Any())
+                            try
                             {
-                                Directory.Delete(videoDirectory);
-                                Log.Information($"Deleted empty game folder: {videoDirectory}");
+                                File.Delete(normalizedFilePath);
+                                Log.Information($"Video file deleted: {normalizedFilePath}");
+                                break;
+                            }
+                            catch (IOException)
+                            {
+                                if (i == maxRetries - 1) throw; // Re-throw on last attempt
+                                Log.Warning($"File is locked, retrying deletion in 500ms... (Attempt {i + 1}/{maxRetries})");
+                                await Task.Delay(500);
                             }
                         }
-                        catch (Exception ex)
+
+                        // Clean up empty game folder if it exists
+                        if (!string.IsNullOrEmpty(videoDirectory) && Directory.Exists(videoDirectory))
                         {
-                            Log.Warning($"Failed to clean up empty game folder: {ex.Message}");
+                            try
+                            {
+                                // Only delete if the folder is empty and is a game subfolder (not the root video type folder)
+                                string contentRoot = Settings.Instance.ContentFolder;
+                                string[] rootFolders = { FolderNames.Sessions, FolderNames.Buffers, FolderNames.Clips, FolderNames.Highlights };
+                                bool isGameSubfolder = rootFolders.Any(rf =>
+                                    videoDirectory.StartsWith(Path.Combine(contentRoot, rf), StringComparison.OrdinalIgnoreCase) &&
+                                    !videoDirectory.Equals(Path.Combine(contentRoot, rf), StringComparison.OrdinalIgnoreCase));
+
+                                if (isGameSubfolder && !Directory.EnumerateFileSystemEntries(videoDirectory).Any())
+                                {
+                                    Directory.Delete(videoDirectory);
+                                    Log.Information($"Deleted empty game folder: {videoDirectory}");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Log.Warning($"Failed to clean up empty game folder: {ex.Message}");
+                            }
                         }
                     }
                 }
