@@ -108,29 +108,23 @@ export default function Sessions() {
              // Expect at least Game/Timestamp/file.mpd (3 parts) or Game/file.mpd (2 parts)
              if (parts.length >= 2) {
                  const game = parts[0];
-                 const filePart = parts.slice(1).join('/');
-                 return `http://localhost:2222/api/live/${encodeURIComponent(game)}/${encodeURIComponent(filePart)}?t=${refreshKey}`;
+                 // Encode each remaining part (Timestamp, Filename) and join with actual slashes
+                 // This ensures the browser sees the directory structure for relative path resolution
+                 const encodedFileParts = parts.slice(1).map(p => encodeURIComponent(p)).join('/');
+                 return `http://localhost:2222/api/live/${encodeURIComponent(game)}/${encodedFileParts}?t=${refreshKey}`;
              }
         }
 
         // Fallback: try to guess from the end of the path
         const parts = normalizedPath.split('/');
         if (parts.length >= 2) {
-            const fileName = parts.pop();
-            const parentDir = parts.pop();
-            // If parentDir is the game name (flat structure)
-            // But if we have Game/Timestamp/file.mpd, parentDir is Timestamp.
-            // We need to know the structure.
-            // Best effort: if we found no session marker, assume the folder structure matches backend expectation
-            // Backend expects: api/live/{Game}/{File...}
-
-            // If we are here, we likely have a path that doesn't match standard folder structure.
-            // Let's assume the standard `Game/Timestamp/file` structure if parts.length is enough.
-            if (parts.length >= 1) { // We already popped 2
-                 const gameFolder = parts.pop(); // This would be Game if structure is Game/Timestamp/File
-                 // Reconstruct filePart
-                 const filePart = `${parentDir}/${fileName}`;
-                 return `http://localhost:2222/api/live/${encodeURIComponent(gameFolder || '')}/${encodeURIComponent(filePart)}?t=${refreshKey}`;
+            const fileName = parts.pop()!;
+            const parentDir = parts.pop()!;
+            // If we have at least one more part, assume it's the game folder
+            if (parts.length >= 1) {
+                 const gameFolder = parts.pop()!;
+                 // Construct URL: Game/Timestamp/Filename
+                 return `http://localhost:2222/api/live/${encodeURIComponent(gameFolder)}/${encodeURIComponent(parentDir)}/${encodeURIComponent(fileName)}?t=${refreshKey}`;
             }
         }
 
