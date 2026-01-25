@@ -92,11 +92,20 @@ export default function Sessions() {
     // If it's a Dash manifest
     if (video.isLive || video.filePath.endsWith('.mpd')) {
         const normalizedPath = video.filePath.replace(/\\/g, '/');
-        const sessionIndex = normalizedPath.indexOf('/Sessions/');
 
-        if (sessionIndex !== -1) {
-             const relativePath = normalizedPath.substring(sessionIndex + '/Sessions/'.length);
+        // Check for 'Full Sessions' (standard) or 'Sessions' (legacy/fallback)
+        let splitIndex = normalizedPath.indexOf('/Full Sessions/');
+        let segmentLength = '/Full Sessions/'.length;
+
+        if (splitIndex === -1) {
+            splitIndex = normalizedPath.indexOf('/Sessions/');
+            segmentLength = '/Sessions/'.length;
+        }
+
+        if (splitIndex !== -1) {
+             const relativePath = normalizedPath.substring(splitIndex + segmentLength);
              const parts = relativePath.split('/');
+             // Expect at least Game/Timestamp/file.mpd (3 parts) or Game/file.mpd (2 parts)
              if (parts.length >= 2) {
                  const game = parts[0];
                  const filePart = parts.slice(1).join('/');
@@ -104,10 +113,29 @@ export default function Sessions() {
              }
         }
 
+        // Fallback: try to guess from the end of the path
         const parts = normalizedPath.split('/');
-        const fileName = parts.pop();
-        const gameFolder = parts.pop();
-        return `http://localhost:2222/api/live/${encodeURIComponent(gameFolder || '')}/${encodeURIComponent(fileName || '')}?t=${refreshKey}`;
+        if (parts.length >= 2) {
+            const fileName = parts.pop();
+            const parentDir = parts.pop();
+            // If parentDir is the game name (flat structure)
+            // But if we have Game/Timestamp/file.mpd, parentDir is Timestamp.
+            // We need to know the structure.
+            // Best effort: if we found no session marker, assume the folder structure matches backend expectation
+            // Backend expects: api/live/{Game}/{File...}
+
+            // If we are here, we likely have a path that doesn't match standard folder structure.
+            // Let's assume the standard `Game/Timestamp/file` structure if parts.length is enough.
+            if (parts.length >= 1) { // We already popped 2
+                 const gameFolder = parts.pop(); // This would be Game if structure is Game/Timestamp/File
+                 // Reconstruct filePart
+                 const filePart = `${parentDir}/${fileName}`;
+                 return `http://localhost:2222/api/live/${encodeURIComponent(gameFolder || '')}/${encodeURIComponent(filePart)}?t=${refreshKey}`;
+            }
+        }
+
+        // Ultimate fallback
+        return `http://localhost:2222/api/content?input=${encodeURIComponent(video.filePath)}&type=session`;
     }
     // Standard video file
     return `http://localhost:2222/api/content?input=${encodeURIComponent(video.filePath)}&type=session`;

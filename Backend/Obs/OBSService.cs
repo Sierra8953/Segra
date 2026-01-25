@@ -1758,9 +1758,13 @@ namespace Segra.Backend.Obs
             new(StringComparer.OrdinalIgnoreCase)
             {
                 // ── NVIDIA NVENC ────────────────────────────────────
-                ["jim_nvenc"] = "NVIDIA NVENC H.264",
-                ["jim_hevc_nvenc"] = "NVIDIA NVENC H.265",
-                ["jim_av1_nvenc"] = "NVIDIA NVENC AV1",
+                ["h264_nvenc"] = "NVIDIA NVENC H.264",
+                ["hevc_nvenc"] = "NVIDIA NVENC H.265",
+                ["av1_nvenc"] = "NVIDIA NVENC AV1",
+                // Legacy/Internal IDs
+                ["jim_nvenc"] = "NVIDIA NVENC H.264 (Legacy)",
+                ["jim_hevc_nvenc"] = "NVIDIA NVENC H.265 (Legacy)",
+                ["jim_av1_nvenc"] = "NVIDIA NVENC AV1 (Legacy)",
 
                 // ── AMD AMF ────────────────────────────────────────
                 ["h264_texture_amf"] = "AMD AMF H.264",
@@ -1838,13 +1842,17 @@ namespace Segra.Backend.Obs
             }
             else if (encoderType == "gpu")
             {
-                // Prefer NVIDIA NVENC (jim_nvenc)
+                // Prefer NVIDIA NVENC (modern first, then legacy)
                 selectedCodec = availableCodecs.FirstOrDefault(
-                    c => c.InternalEncoderId.Equals(
-                        "jim_nvenc",
-                        StringComparison.OrdinalIgnoreCase
-                    )
+                    c => c.InternalEncoderId.Equals("h264_nvenc", StringComparison.OrdinalIgnoreCase)
                 );
+
+                if (selectedCodec == null)
+                {
+                    selectedCodec = availableCodecs.FirstOrDefault(
+                        c => c.InternalEncoderId.Equals("jim_nvenc", StringComparison.OrdinalIgnoreCase)
+                    );
+                }
 
                 // If not found, try AMD AMF H.264
                 if (selectedCodec == null)

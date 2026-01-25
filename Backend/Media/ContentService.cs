@@ -71,8 +71,11 @@ namespace Segra.Backend.Media
                     Log.Warning($"Failed to build audio track names for metadata: {ex.Message}");
                 }
 
-                var duration = await GetVideoDurationAsync(filePath);
                 bool isLive = Path.GetExtension(filePath).Equals(".mpd", StringComparison.OrdinalIgnoreCase);
+
+                // For live/DASH content, we skip duration probe as the file might be incomplete or zero-length initially
+                // and probing it with FFmpeg can cause timeouts.
+                var duration = isLive ? TimeSpan.Zero : await GetVideoDurationAsync(filePath);
 
                 var metadataContent = new Content
                 {
