@@ -303,7 +303,11 @@ export default function Sessions() {
                 </div>
             ) : (
                 <div className="w-full h-full flex items-center justify-center text-gray-500">
-                    <p>Select a game to view sessions</p>
+                    {activeGame ? (
+                         <p>No recordings found for {activeGame}</p>
+                    ) : (
+                        <p>Select a game to view sessions</p>
+                    )}
                 </div>
             )}
 

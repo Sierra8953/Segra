@@ -960,7 +960,25 @@ namespace Segra.Backend.Obs
             // Create metadata for the live session immediately
             // We do this in a task to avoid blocking
             _ = Task.Run(async () => {
-                await Task.Delay(1000); // Give OBS a moment to start writing
+                // Wait for the file to be created by OBS (timeout after 10 seconds)
+                int attempts = 0;
+                while (!File.Exists(videoOutputPath) && attempts < 20)
+                {
+                    await Task.Delay(500);
+                    attempts++;
+                }
+
+                if (!File.Exists(videoOutputPath))
+                {
+                    Log.Warning($"DASH manifest was not created within timeout: {videoOutputPath}");
+                    // Even if file check fails (e.g. permission/path weirdness), try creating metadata so it might show up
+                    // But usually if file doesn't exist, LoadContentFromFolderIntoState will filter it out.
+                }
+                else
+                {
+                     Log.Information($"DASH manifest confirmed at: {videoOutputPath}");
+                }
+
                 int? igdbId = !string.IsNullOrEmpty(exePath) ? GameUtils.GetIgdbIdFromExePath(exePath) : null;
 
                 await ContentService.CreateMetadataFile(videoOutputPath, Content.ContentType.Session, name, null, null, igdbId: igdbId);
