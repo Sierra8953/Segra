@@ -920,13 +920,10 @@ namespace Segra.Backend.Obs
 
             if (isBackgroundMode)
             {
-                // In DASH mode, we create a unique timestamped folder for the session
-                // Structure: Sessions/{Game}/{Timestamp}/{Timestamp}.mpd
-                string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-                string sessionSubDir = Path.Combine(sessionDir, timestamp);
-                if (!Directory.Exists(sessionSubDir)) Directory.CreateDirectory(sessionSubDir);
-
-                videoOutputPath = Path.Combine(sessionSubDir, $"{timestamp}.mpd").Replace("\\", "/");
+                // In DASH mode, we use a single persistent session file per game to satisfy "1 recording for each game"
+                // Structure: Sessions/{Game}/{Game}.mpd
+                // This ensures metadata uniqueness (Game.json) and prevents cluttering the filesystem with timestamp folders.
+                videoOutputPath = Path.Combine(sessionDir, $"{sanitizedGameName}.mpd").Replace("\\", "/");
 
                 int bufferDuration = Settings.Instance.GetGameBufferDuration(name);
                 obs_data_set_string(outputSettings, "format_name", DashRecordingService.GetDashFormatName());

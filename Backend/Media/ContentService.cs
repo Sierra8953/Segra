@@ -334,6 +334,10 @@ namespace Segra.Backend.Media
                     bool isDash = Path.GetExtension(normalizedFilePath).Equals(".mpd", StringComparison.OrdinalIgnoreCase);
 
                     // For DASH content, if the file is in a dedicated folder (folder name == filename), delete the whole folder
+                    // With single-session logic (Sessions/Game/Game.mpd), videoDirectory is "Sessions/Game".
+                    // The filename is "Game". So parentDirName == fileNameNoExt.
+                    // This logic correctly deletes the game folder if we delete the session file, which is desired for cleaning up the session.
+                    // Note: If "Sessions/Game" contained other files (it shouldn't, as Clips/Highlights are elsewhere), they would be deleted.
                     if (isDash && videoDirectory != null)
                     {
                         string fileNameNoExt = Path.GetFileNameWithoutExtension(normalizedFilePath);

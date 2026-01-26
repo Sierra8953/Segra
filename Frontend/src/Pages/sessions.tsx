@@ -91,6 +91,15 @@ export default function Sessions() {
   const getVideoUrl = (video: Content) => {
     // If it's a Dash manifest
     if (video.isLive || video.filePath.endsWith('.mpd')) {
+        // Simplified URL construction for Single Session per Game
+        // The file is located at .../Sessions/{Game}/{Game}.mpd
+        // The backend expects /api/live/{GameFolder}/{FileName}
+        // Since FileName is now just {Game}.mpd (no nested timestamp folder), we can rely on standard construction.
+
+        // However, we still need to parse the Game name from the path properly if possible,
+        // or rely on video.game if it's reliable.
+        // Let's stick to parsing from path to be safe against metadata/path mismatch, using the robust logic.
+
         const normalizedPath = video.filePath.replace(/\\/g, '/');
 
         // Check for 'Full Sessions' (standard) or 'Sessions' (legacy/fallback)
@@ -105,30 +114,16 @@ export default function Sessions() {
         if (splitIndex !== -1) {
              const relativePath = normalizedPath.substring(splitIndex + segmentLength);
              const parts = relativePath.split('/');
-             // Expect at least Game/Timestamp/file.mpd (3 parts) or Game/file.mpd (2 parts)
+             // Expect Game/Game.mpd (2 parts)
              if (parts.length >= 2) {
                  const game = parts[0];
-                 // Encode each remaining part (Timestamp, Filename) and join with actual slashes
-                 // This ensures the browser sees the directory structure for relative path resolution
-                 const encodedFileParts = parts.slice(1).map(p => encodeURIComponent(p)).join('/');
-                 return `http://localhost:2222/api/live/${encodeURIComponent(game)}/${encodedFileParts}?t=${refreshKey}`;
+                 const fileName = parts.slice(1).join('/'); // Should just be filename
+                 // Encode parts
+                 return `http://localhost:2222/api/live/${encodeURIComponent(game)}/${encodeURIComponent(fileName)}?t=${refreshKey}`;
              }
         }
 
-        // Fallback: try to guess from the end of the path
-        const parts = normalizedPath.split('/');
-        if (parts.length >= 2) {
-            const fileName = parts.pop()!;
-            const parentDir = parts.pop()!;
-            // If we have at least one more part, assume it's the game folder
-            if (parts.length >= 1) {
-                 const gameFolder = parts.pop()!;
-                 // Construct URL: Game/Timestamp/Filename
-                 return `http://localhost:2222/api/live/${encodeURIComponent(gameFolder)}/${encodeURIComponent(parentDir)}/${encodeURIComponent(fileName)}?t=${refreshKey}`;
-            }
-        }
-
-        // Ultimate fallback
+        // Fallback if path parsing fails
         return `http://localhost:2222/api/content?input=${encodeURIComponent(video.filePath)}&type=session`;
     }
     // Standard video file
