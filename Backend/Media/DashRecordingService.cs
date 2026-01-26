@@ -22,8 +22,9 @@ namespace Segra.Backend.Media
             int segmentDuration = DefaultSegmentDuration;
             int windowSize = Math.Max(10, bufferDurationSeconds / segmentDuration);
 
-            // Updated to remove_at_exit=1 as per constraints to clean up after session
-            return $"window_size={windowSize} remove_at_exit=1 use_template=1 seg_duration={segmentDuration} streaming=1 ldash=1 write_prft=1";
+            // Removed experimental flags (streaming, ldash, write_prft) to prevent heap corruption/crashes in libobs/ffmpeg
+            // Stick to core constraints: window_size, remove_at_exit, use_template, seg_duration
+            return $"window_size={windowSize} remove_at_exit=1 use_template=1 seg_duration={segmentDuration}";
         }
 
         public static string GetOutputFileName()
