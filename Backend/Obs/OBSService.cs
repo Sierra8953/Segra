@@ -932,11 +932,6 @@ namespace Segra.Backend.Obs
                 obs_data_set_string(outputSettings, "format_name", DashRecordingService.GetDashFormatName());
                 obs_data_set_string(outputSettings, "muxer_settings", DashRecordingService.GetDashMuxerSettings(bufferDuration));
                 Log.Information($"Using DASH recording output: {videoOutputPath} with buffer {bufferDuration}s");
-
-                // Start monitoring for Master Manifest merging
-                // We wait synchronously to ensure the Master MPD is created before metadata logic runs,
-                // as StartRecording is synchronous.
-                DashManifestService.StartMonitoring(name, videoOutputPath).GetAwaiter().GetResult();
             }
             else
             {
@@ -968,15 +963,7 @@ namespace Segra.Backend.Obs
                 await Task.Delay(1000); // Give OBS a moment to start writing
                 int? igdbId = !string.IsNullOrEmpty(exePath) ? GameUtils.GetIgdbIdFromExePath(exePath) : null;
 
-                string metadataTarget = videoOutputPath;
-                // If in background mode, we want the UI to point to the Master Manifest (Game.mpd)
-                if (isBackgroundMode)
-                {
-                    string sessionDir = Path.GetDirectoryName(Path.GetDirectoryName(videoOutputPath))!; // Sessions/{Game}
-                    metadataTarget = Path.Combine(sessionDir, $"{sanitizedGameName}.mpd").Replace("\\", "/");
-                }
-
-                await ContentService.CreateMetadataFile(metadataTarget, Content.ContentType.Session, name, null, null, igdbId: igdbId);
+                await ContentService.CreateMetadataFile(videoOutputPath, Content.ContentType.Session, name, null, null, igdbId: igdbId);
                 await SettingsService.LoadContentFromFolderIntoState(true);
             });
 
@@ -1019,21 +1006,11 @@ namespace Segra.Backend.Obs
 
             string? gameImage = GameIconUtils.ExtractIconAsBase64(exePath);
 
-            // Determine the "Logical" file path for the session.
-            // In DASH mode, this is the Master Manifest (Game.mpd).
-            // In MP4 mode, it's the videoOutputPath.
-            string logicalFilePath = videoOutputPath;
-            if (isBackgroundMode)
-            {
-                // sessionDir is already defined earlier as Sessions/{Game}
-                logicalFilePath = Path.Combine(sessionDir, $"{sanitizedGameName}.mpd").Replace("\\", "/");
-            }
-
             Settings.Instance.State.Recording = new Recording()
             {
                 StartTime = DateTime.Now,
                 Game = name,
-                FilePath = logicalFilePath,
+                FilePath = videoOutputPath,
                 FileName = fileName,
                 Pid = pid,
                 IsUsingGameHook = _isGameCaptureHooked,
@@ -1121,12 +1098,6 @@ namespace Segra.Backend.Obs
                     else
                     {
                         Log.Information("Output stopped.");
-                    }
-
-                    // Stop manifest monitoring
-                    if (isBackgroundMode)
-                    {
-                        DashManifestService.StopMonitoring();
                     }
 
                     Thread.Sleep(200);

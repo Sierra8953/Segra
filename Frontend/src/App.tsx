@@ -2,6 +2,7 @@ import { useEffect, useState, createContext } from 'react';
 import Settings from './Pages/settings';
 import Menu from './menu';
 import Sessions from './Pages/sessions';
+import LivePreview from './Pages/LivePreview';
 import Clips from './Pages/clips';
 import ReplayBuffer from './Pages/replay-buffer';
 import Highlights from './Pages/highlights';
@@ -59,6 +60,8 @@ function App() {
     }
 
     switch (selectedMenu) {
+      case 'Live Preview':
+        return <LivePreview />;
       case 'Session':
         return <Sessions />;
       case 'Replay Buffer':

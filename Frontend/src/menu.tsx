@@ -41,6 +41,7 @@ export default function Menu({ selectedMenu, onSelectMenu }: MenuProps) {
   const { obsDownloadProgress } = useObsDownload();
 
   // Create refs for each menu button
+  const liveRef = useRef<HTMLButtonElement>(null);
   const sessionsRef = useRef<HTMLButtonElement>(null);
   const replayRef = useRef<HTMLButtonElement>(null);
   const clipsRef = useRef<HTMLButtonElement>(null);
@@ -55,6 +56,8 @@ export default function Menu({ selectedMenu, onSelectMenu }: MenuProps) {
   useEffect(() => {
     const getRefForMenu = () => {
       switch (selectedMenu) {
+        case 'Live Preview':
+          return liveRef;
         case 'Full Sessions': // Assuming 'Session' maps to this or handled elsewhere
         case 'Session':
           return sessionsRef;
@@ -140,6 +143,15 @@ export default function Menu({ selectedMenu, onSelectMenu }: MenuProps) {
         >
           <MdOutlinePlayCircleOutline className="w-6 h-6 shrink-0" />
           {!isCollapsed && <span className="ml-2 truncate">Session</span>}
+        </button>
+        <button
+          ref={liveRef}
+          className={`btn btn-secondary ${selectedMenu === 'Live Preview' ? 'text-primary' : ''} w-full justify-start border-base-400 hover:border-base-400 hover:text-primary hover:border-opacity-75 py-3 text-gray-300 ${isCollapsed ? 'px-0 justify-center' : ''}`}
+          onMouseDown={() => onSelectMenu('Live Preview')}
+          title={isCollapsed ? "Live Preview" : ""}
+        >
+          <MdFiberManualRecord className="w-6 h-6 shrink-0 text-error" />
+          {!isCollapsed && <span className="ml-2 truncate">Live Preview</span>}
         </button>
         <button
           ref={replayRef}

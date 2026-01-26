@@ -1,102 +1,83 @@
 import React, { useEffect, useRef } from 'react';
-import { MediaPlayer, Debug, MediaPlayerClass } from 'dashjs';
+import dashjs from 'dashjs';
 
 interface DashPlayerProps {
-    url: string;
+    src?: string;
+    url?: string; // Alias for src to support legacy usage
     autoplay?: boolean;
-    className?: string;
-    width?: string | number;
-    height?: string | number;
     controls?: boolean;
-    muted?: boolean;
-    onTimeUpdate?: (currentTime: number) => void;
+    className?: string;
+    onTimeUpdate?: (time: number) => void;
     onDurationChange?: (duration: number) => void;
 }
 
 const DashPlayer: React.FC<DashPlayerProps> = ({
+    src,
     url,
     autoplay = true,
-    className,
-    width = '100%',
-    height = '100%',
     controls = true,
-    muted = false,
+    className,
     onTimeUpdate,
     onDurationChange
 }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
-    const playerRef = useRef<MediaPlayerClass | null>(null);
+    const playerRef = useRef<dashjs.MediaPlayerClass | null>(null);
+    const source = src || url;
 
     useEffect(() => {
-        if (!videoRef.current || !url) return;
+        if (!source || !videoRef.current) return;
 
-        // Initialize player
-        const player = MediaPlayer().create();
+        // Initialize Dash Player
+        const player = dashjs.MediaPlayer().create();
+        player.initialize(videoRef.current, source, autoplay);
 
-        // Configure low latency for live streams if needed
-        // Note: lowLatencyEnabled was moved in dash.js 5.x but types might lag or vary.
-        // We cast to any to support both structures until types are fully aligned.
-        const settings = {
+        // Configure for low latency live streaming
+        player.updateSettings({
             streaming: {
+                lowLatencyEnabled: true,
                 delay: {
-                    liveDelay: 4,
-                },
-                buffer: {
-                    lowLatencyStallThreshold: 0.5,
+                    liveDelay: 2.0
                 },
                 liveCatchup: {
-                    enabled: false
+                    mode: 'liveCatchupModeLoLp'
                 }
-            },
-            debug: {
-                logLevel: Debug.LOG_LEVEL_INFO
             }
-        };
-
-        player.updateSettings(settings);
-
-        player.on(MediaPlayer.events.ERROR, (e: any) => {
-            console.error('DashPlayer Error:', e);
         });
-
-        player.initialize(videoRef.current, url, autoplay);
 
         playerRef.current = player;
 
+        const onEvent = (e: any) => {
+           // Handle dash events if needed
+        };
+
+        // Native video events
+        const videoEl = videoRef.current;
         const handleTimeUpdate = () => {
-            if (videoRef.current && onTimeUpdate) {
-                onTimeUpdate(videoRef.current.currentTime);
-            }
+            if (onTimeUpdate) onTimeUpdate(videoEl.currentTime);
         };
-
         const handleDurationChange = () => {
-             if (videoRef.current && onDurationChange) {
-                onDurationChange(videoRef.current.duration);
-            }
+             if (onDurationChange) onDurationChange(videoEl.duration);
         };
 
-        const videoElement = videoRef.current;
-        videoElement.addEventListener('timeupdate', handleTimeUpdate);
-        videoElement.addEventListener('durationchange', handleDurationChange);
+        videoEl.addEventListener('timeupdate', handleTimeUpdate);
+        videoEl.addEventListener('durationchange', handleDurationChange);
 
-        // Cleanup
         return () => {
-            videoElement.removeEventListener('timeupdate', handleTimeUpdate);
-            videoElement.removeEventListener('durationchange', handleDurationChange);
-
             if (player) {
                 player.destroy();
                 playerRef.current = null;
             }
+            videoEl.removeEventListener('timeupdate', handleTimeUpdate);
+            videoEl.removeEventListener('durationchange', handleDurationChange);
         };
-    }, [url, autoplay, onTimeUpdate, onDurationChange]);
+    }, [source, autoplay]);
 
     return (
-        <div className={className} style={{ width, height }}>
+        <div className={`relative w-full h-full ${className || ''}`}>
             <video
                 ref={videoRef}
                 controls={controls}
-                muted={muted}
+                className="w-full h-full object-contain bg-black"
                 style={{ width: '100%', height: '100%' }}
             />
         </div>
