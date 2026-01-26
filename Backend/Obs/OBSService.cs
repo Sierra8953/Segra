@@ -934,8 +934,9 @@ namespace Segra.Backend.Obs
                 Log.Information($"Using DASH recording output: {videoOutputPath} with buffer {bufferDuration}s");
 
                 // Start monitoring for Master Manifest merging
-                // We await this to ensure the Master MPD is created before metadata logic runs
-                await DashManifestService.StartMonitoring(name, videoOutputPath);
+                // We wait synchronously to ensure the Master MPD is created before metadata logic runs,
+                // as StartRecording is synchronous.
+                DashManifestService.StartMonitoring(name, videoOutputPath).GetAwaiter().GetResult();
             }
             else
             {
@@ -1024,7 +1025,7 @@ namespace Segra.Backend.Obs
             string logicalFilePath = videoOutputPath;
             if (isBackgroundMode)
             {
-                string sessionDir = Path.GetDirectoryName(Path.GetDirectoryName(videoOutputPath))!; // Sessions/{Game}
+                // sessionDir is already defined earlier as Sessions/{Game}
                 logicalFilePath = Path.Combine(sessionDir, $"{sanitizedGameName}.mpd").Replace("\\", "/");
             }
 
