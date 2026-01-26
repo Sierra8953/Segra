@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import dashjs from 'dashjs';
+import { MediaPlayer, MediaPlayerClass } from 'dashjs';
 
 interface DashPlayerProps {
     src?: string;
@@ -21,14 +21,14 @@ const DashPlayer: React.FC<DashPlayerProps> = ({
     onDurationChange
 }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
-    const playerRef = useRef<dashjs.MediaPlayerClass | null>(null);
+    const playerRef = useRef<MediaPlayerClass | null>(null);
     const source = src || url;
 
     useEffect(() => {
         if (!source || !videoRef.current) return;
 
         // Initialize Dash Player
-        const player = dashjs.MediaPlayer().create();
+        const player = MediaPlayer().create();
         player.initialize(videoRef.current, source, autoplay);
 
         // Configure for low latency live streaming
@@ -42,13 +42,9 @@ const DashPlayer: React.FC<DashPlayerProps> = ({
                     mode: 'liveCatchupModeLoLp'
                 }
             }
-        });
+        } as any);
 
         playerRef.current = player;
-
-        const onEvent = (e: any) => {
-           // Handle dash events if needed
-        };
 
         // Native video events
         const videoEl = videoRef.current;

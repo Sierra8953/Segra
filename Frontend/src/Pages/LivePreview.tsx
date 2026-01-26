@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { useSettings } from '../Context/SettingsContext';
 import DashPlayer from '../Components/DashPlayer';
 import { MdLiveTv, MdError } from 'react-icons/md';
