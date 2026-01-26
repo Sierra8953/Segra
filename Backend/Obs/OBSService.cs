@@ -965,7 +965,7 @@ namespace Segra.Backend.Obs
             // Create metadata for the live session immediately
             // We do this in a task to avoid blocking
             _ = Task.Run(async () => {
-                await Task.Delay(1000); // Give it a moment to create the file
+                await Task.Delay(1000); // Give OBS a moment to start writing
                 int? igdbId = !string.IsNullOrEmpty(exePath) ? GameUtils.GetIgdbIdFromExePath(exePath) : null;
 
                 string metadataTarget = videoOutputPath;

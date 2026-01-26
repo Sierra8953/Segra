@@ -38,42 +38,8 @@ namespace Segra.Backend.Media
 
             Log.Information($"[DashManifestService] Starting monitor. Master: {_currentMasterManifestPath}, Live: {_currentLiveManifestPath}");
 
-            // Ensure master manifest exists immediately so metadata can be created
-            if (!File.Exists(_currentMasterManifestPath))
-            {
-                await CreateInitialMasterManifest();
-            }
-
             // Run background task
             _ = Task.Run(() => MonitorLoop(_monitoringCts.Token));
-        }
-
-        private static async Task CreateInitialMasterManifest()
-        {
-            try
-            {
-                var masterDoc = new XDocument(
-                        new XDeclaration("1.0", "utf-8", null),
-                        new XElement(NS + "MPD",
-                            new XAttribute("xmlns", NS.NamespaceName),
-                            new XAttribute("minBufferTime", "PT1.5S"),
-                            new XAttribute("type", "dynamic"),
-                            new XAttribute("profiles", "urn:mpeg:dash:profile:isoff-live:2011"),
-                            new XAttribute("publishTime", DateTime.UtcNow.ToString("O")),
-                            new XAttribute("availabilityStartTime", DateTime.UtcNow.ToString("O")),
-                            new XAttribute("minimumUpdatePeriod", "PT1S")
-                        )
-                    );
-
-                using (var fs = new FileStream(_currentMasterManifestPath!, FileMode.Create, FileAccess.Write, FileShare.None))
-                {
-                    await masterDoc.SaveAsync(fs, SaveOptions.None, CancellationToken.None);
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Error($"[DashManifestService] Failed to create initial master manifest: {ex.Message}");
-            }
         }
 
         public static void StopMonitoring()
