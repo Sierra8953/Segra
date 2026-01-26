@@ -17,13 +17,17 @@ namespace Segra.Backend.Media
             return FormatName;
         }
 
-        public static string GetDashMuxerSettings(int bufferDurationSeconds = 1800)
+        public static string GetDashMuxerSettings(int bufferDurationSeconds = 3600)
         {
             int segmentDuration = DefaultSegmentDuration;
+            // Ensure window size covers the requested duration
             int windowSize = Math.Max(10, bufferDurationSeconds / segmentDuration);
 
-            // Removed experimental flags (streaming, ldash, write_prft) to prevent heap corruption/crashes in libobs/ffmpeg
-            // Stick to core constraints: window_size, remove_at_exit, use_template, seg_duration
+            // Flags explained:
+            // window_size: Number of segments to keep in the rolling buffer
+            // remove_at_exit=1: Delete files when the process stops (handled by OBS shutdown usually, but we also do manual cleanup)
+            // use_template=1: Use template based segment naming (essential for predictable segment names)
+            // seg_duration: Duration of each chunk
             return $"window_size={windowSize} remove_at_exit=1 use_template=1 seg_duration={segmentDuration}";
         }
 

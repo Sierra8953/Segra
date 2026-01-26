@@ -920,13 +920,29 @@ namespace Segra.Backend.Obs
 
             if (isBackgroundMode)
             {
-                // In DASH mode, we use timestamped folders to isolate segments, but we will merge them into a Master Manifest later.
-                // Structure: Sessions/{Game}/{Timestamp}/{Timestamp}.mpd
-                string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-                string sessionSubDir = Path.Combine(sessionDir, timestamp);
-                if (!Directory.Exists(sessionSubDir)) Directory.CreateDirectory(sessionSubDir);
+                // In DASH mode, we use a single fixed folder per game to maintain a rolling buffer.
+                // Structure: Sessions/{Game}/{Game}.mpd
+                // We rely on ffmpeg's window_size to manage the rolling buffer segments in this folder.
 
-                videoOutputPath = Path.Combine(sessionSubDir, $"{timestamp}.mpd").Replace("\\", "/");
+                // Cleanup existing DASH files in this folder to start fresh
+                try
+                {
+                    var existingFiles = Directory.GetFiles(sessionDir, "*.*")
+                        .Where(f => f.EndsWith(".mpd") || f.EndsWith(".m4s") || f.EndsWith(".tmp"));
+
+                    foreach (var file in existingFiles)
+                    {
+                        File.Delete(file);
+                    }
+                    Log.Information($"Cleaned up previous DASH session files in {sessionDir}");
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning($"Failed to cleanup previous session files: {ex.Message}");
+                }
+
+                // Use the game name for the manifest file (e.g., "Apex Legends.mpd")
+                videoOutputPath = Path.Combine(sessionDir, $"{sanitizedGameName}.mpd").Replace("\\", "/");
 
                 int bufferDuration = Settings.Instance.GetGameBufferDuration(name);
                 obs_data_set_string(outputSettings, "format_name", DashRecordingService.GetDashFormatName());

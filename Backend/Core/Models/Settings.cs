@@ -45,7 +45,7 @@ namespace Segra.Backend.Core.Models
         private bool _runOnStartup = false;
         private bool _receiveBetaUpdates = false;
         private RecordingMode _recordingMode = RecordingMode.Background;
-        private int _replayBufferDuration = 30;
+        private int _replayBufferDuration = 3600; // Default 1 hour
         private int _replayBufferMaxSize = 1000;
         private List<Keybind> _keybindings;
         private List<Game> _whitelist = new List<Game>();

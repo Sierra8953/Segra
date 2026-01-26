@@ -114,12 +114,24 @@ export default function Sessions() {
         if (splitIndex !== -1) {
              const relativePath = normalizedPath.substring(splitIndex + segmentLength);
              const parts = relativePath.split('/');
-             // Expect Game/Game.mpd (2 parts)
+             // Expect Game/Game.mpd (2 parts) or Game/Timestamp/Timestamp.mpd (legacy 3 parts)
+             // With the new "Single Folder per Game" change:
+             // Path is likely: "Sessions/Overwatch 2/Overwatch 2.mpd"
+
              if (parts.length >= 2) {
                  const game = parts[0];
-                 const fileName = parts.slice(1).join('/'); // Should just be filename
-                 // Encode parts
-                 return `http://localhost:2222/api/live/${encodeURIComponent(game)}/${encodeURIComponent(fileName)}?t=${refreshKey}`;
+                 // If the file is directly inside the game folder (new structure), fileName is just the last part
+                 // If it was nested (old structure), we might need to handle it, but the new requirement is "1 folder for each game"
+
+                 // If parts has > 2 elements, it might be legacy or subdirectory.
+                 // However, the backend is now configured to output to {Game}/{Game}.mpd
+                 // We need to pass the *relative file path* inside the game folder to the API.
+
+                 const fileParts = parts.slice(1);
+                 // Encode path segments individually
+                 const encodedRest = fileParts.map(p => encodeURIComponent(p)).join('/');
+
+                 return `http://localhost:2222/api/live/${encodeURIComponent(game)}/${encodedRest}?t=${refreshKey}`;
              }
         }
 
