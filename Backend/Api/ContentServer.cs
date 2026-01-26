@@ -4,6 +4,7 @@ using System.Web;
 using Segra.Backend.Media;
 using Segra.Backend.Core.Models;
 using Segra.Backend.Shared;
+using Segra.Backend.Services;
 
 namespace Segra.Backend.Api
 {
@@ -301,6 +302,36 @@ namespace Segra.Backend.Api
                 response.ContentType = "application/dash+xml";
                 // Disable caching for manifest so updates are picked up
                 response.AddHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+
+                // For MPD requests, we use the DashManifestService to patch the manifest on-the-fly
+                // allowing persistent buffer playback (combining old and new segments).
+                // We don't use the standard file streaming logic below for MPDs.
+                try
+                {
+                    // We need the game name to get the buffer configuration.
+                    // It's not passed here directly, but we can infer it or use default.
+                    // For simplicity, we'll use the default or a reasonable large value if not easily accessible.
+                    // Ideally, pass game name in StreamContentFile or parse from path.
+
+                    // Simple path parsing attempt: .../Sessions/{GameName}/{GameName}.mpd
+                    string? gameName = null;
+                    string? dir = Path.GetDirectoryName(fileName);
+                    if (dir != null) gameName = new DirectoryInfo(dir).Name;
+
+                    int bufferDuration = Settings.Instance.GetGameBufferDuration(gameName ?? "");
+
+                    string patchedXml = await DashManifestService.GetPatchedManifest(fileName, bufferDuration);
+
+                    byte[] bytes = System.Text.Encoding.UTF8.GetBytes(patchedXml);
+                    response.ContentLength64 = bytes.Length;
+                    await response.OutputStream.WriteAsync(bytes, 0, bytes.Length);
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    Log.Error($"Failed to serve patched MPD: {ex.Message}. Falling back to file.");
+                    // Fall through to standard streaming
+                }
             }
             else if (fileName.EndsWith(".m4s", StringComparison.OrdinalIgnoreCase))
             {

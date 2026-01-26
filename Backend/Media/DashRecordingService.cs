@@ -30,7 +30,8 @@ namespace Segra.Backend.Media
             // use_template=1: Use template based segment naming
             // seg_duration: Duration of each chunk
             // start_number: The number to start the sequence from (resuming)
-            return $"window_size={windowSize} remove_at_exit=0 use_template=1 seg_duration={segmentDuration} start_number={startNumber}";
+            // init_seg_name/media_seg_name: Enforce consistent naming to prevent stream ID drift (e.g. stream1 -> stream2)
+            return $"window_size={windowSize} remove_at_exit=0 use_template=1 seg_duration={segmentDuration} start_number={startNumber} init_seg_name=init-stream$RepresentationID$.m4s media_seg_name=chunk-stream$RepresentationID$-$Number%05d$.m4s";
         }
 
         public static string GetOutputFileName()
