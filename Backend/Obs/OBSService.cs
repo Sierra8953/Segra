@@ -922,32 +922,21 @@ namespace Segra.Backend.Obs
             {
                 // In DASH mode, we use a single fixed folder per game to maintain a rolling buffer.
                 // Structure: Sessions/{Game}/{Game}.mpd
-                // We rely on ffmpeg's window_size to manage the rolling buffer segments in this folder.
-
-                // Cleanup existing DASH files in this folder to start fresh
-                try
-                {
-                    var existingFiles = Directory.GetFiles(sessionDir, "*.*")
-                        .Where(f => f.EndsWith(".mpd") || f.EndsWith(".m4s") || f.EndsWith(".tmp"));
-
-                    foreach (var file in existingFiles)
-                    {
-                        File.Delete(file);
-                    }
-                    Log.Information($"Cleaned up previous DASH session files in {sessionDir}");
-                }
-                catch (Exception ex)
-                {
-                    Log.Warning($"Failed to cleanup previous session files: {ex.Message}");
-                }
 
                 // Use the game name for the manifest file (e.g., "Apex Legends.mpd")
                 videoOutputPath = Path.Combine(sessionDir, $"{sanitizedGameName}.mpd").Replace("\\", "/");
 
                 int bufferDuration = Settings.Instance.GetGameBufferDuration(name);
+
+                // Determine start number for resumption
+                int startNumber = DashRecordingService.GetNextSegmentNumber(sessionDir);
+
+                // Prune old segments to maintain buffer limit across sessions
+                DashRecordingService.PruneOldSegments(sessionDir, bufferDuration);
+
                 obs_data_set_string(outputSettings, "format_name", DashRecordingService.GetDashFormatName());
-                obs_data_set_string(outputSettings, "muxer_settings", DashRecordingService.GetDashMuxerSettings(bufferDuration));
-                Log.Information($"Using DASH recording output: {videoOutputPath} with buffer {bufferDuration}s");
+                obs_data_set_string(outputSettings, "muxer_settings", DashRecordingService.GetDashMuxerSettings(bufferDuration, startNumber));
+                Log.Information($"Using DASH recording output: {videoOutputPath} with buffer {bufferDuration}s, start number: {startNumber}");
             }
             else
             {
