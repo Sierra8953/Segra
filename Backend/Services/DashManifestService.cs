@@ -75,6 +75,8 @@ namespace Segra.Backend.Services
                 if (videoSegments.Count == 0)
                 {
                     Log.Warning($"No video segments (stream 0) found for game: {gameName}");
+                    // Even if no video segments, return empty string which causes 404 is technically correct,
+                    // but we should log why.
                     return "";
                 }
 
@@ -88,7 +90,11 @@ namespace Segra.Backend.Services
                     .OrderBy(s => s.CreationTime)
                     .ToList();
 
-                if (filteredSegments.Count == 0) return "";
+                if (filteredSegments.Count == 0)
+                {
+                    Log.Warning($"No segments found within buffer window ({bufferDurationSeconds}s) for game: {gameName}");
+                    return "";
+                }
 
                 // 3. Group segments by Session (Folder) to create Periods
                 // The order of keys (Folders) should be chronological based on the first segment in each group
@@ -98,22 +104,32 @@ namespace Segra.Backend.Services
                     .OrderBy(g => g.StartTime)
                     .ToList();
 
+                // Determine Codec Strings
+                string videoCodec = "avc1.640028"; // Default H.264
+                // Check Settings for codec hint
+                // If the user selected AV1, use a generic AV1 codec string acceptable by most browsers
+                // e.g. "av01.0.05M.08" (Main Profile, Level 3.0, Main tier, 8-bit) - safe default for 1080p
+                var currentCodec = Settings.Instance.Codec;
+                if (currentCodec != null)
+                {
+                    if (currentCodec.InternalEncoderId.Contains("av1", StringComparison.OrdinalIgnoreCase))
+                    {
+                        videoCodec = "av01.0.05M.08";
+                    }
+                    else if (currentCodec.InternalEncoderId.Contains("hevc", StringComparison.OrdinalIgnoreCase))
+                    {
+                        videoCodec = "hvc1.1.6.L93.B0"; // Generic HEVC
+                    }
+                }
+
                 // 4. Construct the MPD XML
                 // Anchor time: Creation time of the oldest kept video segment in the first period
-                // We use availabilityStartTime as the anchor for dynamic MPDs.
-                // Note: For multi-period dynamic, AST usually stays constant or updates rarely.
-                // Here we set it to the start of the buffer window.
                 DateTime availabilityStartTime = sessionGroups.First().StartTime;
                 string availabilityStartTimeStr = availabilityStartTime.ToString("yyyy-MM-ddTHH:mm:ssZ");
 
                 var sb = new StringBuilder();
                 sb.Append("<?xml version=\"1.0\" encoding=\"utf-8\"?>");
                 sb.Append($"<MPD xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns=\"urn:mpeg:dash:schema:mpd:2011\" xsi:schemaLocation=\"urn:mpeg:dash:schema:mpd:2011 http://standards.iso.org/ittf/PubliclyAvailableStandards/MPEG-DASH_schema_files/DASH-MPD.xsd\" type=\"dynamic\" minimumUpdatePeriod=\"PT2S\" availabilityStartTime=\"{availabilityStartTimeStr}\" minBufferTime=\"PT2S\" timeShiftBufferDepth=\"PT{bufferDurationSeconds * 2}S\" profiles=\"urn:mpeg:dash:profile:isoff-live:2011\">");
-
-                // Track accumulated start time for periods if we were using static, but for dynamic with AST,
-                // periods just need 'start' relative to AST or be consecutive.
-                // We will let them be consecutive by just listing them (implicit start if not specified, or explicit relative start).
-                // Actually, for multi-period dynamic, simply listing them is safer if we calculate duration correctly.
 
                 TimeSpan accumulatedDuration = TimeSpan.Zero;
 
@@ -130,21 +146,13 @@ namespace Segra.Backend.Services
                     // Period ID must be unique
                     string periodId = session.Folder;
 
-                    // Start time of the period relative to availabilityStartTime.
-                    // Since we filtered strictly by time, the first segment in this session is our anchor for this period.
-                    TimeSpan periodStartOffset = session.StartTime - availabilityStartTime;
-
-                    // To ensure continuity, we might want to just output 'duration' and let client calculate start.
-                    // But 'start' is safer for seeking.
-                    // We'll use the accumulated duration logic which is cleaner for stitching.
-
                     sb.Append($"<Period id=\"{periodId}\" start=\"PT{accumulatedDuration.TotalSeconds}S\" duration=\"PT{sessionDurationSec}S\">");
 
                     // Video Adaptation Set (Stream 0)
                     string initVideoPath = $"{session.Folder}/init-stream0.m4s";
 
                     sb.Append("<AdaptationSet mimeType=\"video/mp4\" segmentAlignment=\"true\" startWithSAP=\"1\" subsegmentAlignment=\"true\" subsegmentStartsWithSAP=\"1\">");
-                    sb.Append("<Representation id=\"0\" codecs=\"avc1.640028\" bandwidth=\"4000000\">");
+                    sb.Append($"<Representation id=\"0\" codecs=\"{videoCodec}\" bandwidth=\"4000000\">");
                     sb.Append($"<SegmentList timescale=\"{Timescale}\" duration=\"{SegmentDuration * Timescale}\">");
                     sb.Append($"<Initialization sourceURL=\"{initVideoPath}\" />");
                     foreach (var seg in sessionVideo)
