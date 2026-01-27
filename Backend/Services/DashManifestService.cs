@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using Serilog;
 using Segra.Backend.Media;
 using Segra.Backend.Shared;
+using Segra.Backend.Core.Models;
 
 namespace Segra.Backend.Services
 {
