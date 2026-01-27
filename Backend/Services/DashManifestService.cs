@@ -44,13 +44,13 @@ namespace Segra.Backend.Services
                         // Filter out init segments, we handle them separately
                         if (fileName.StartsWith("init-")) continue;
 
-                        // Parse segment number from chunk-stream0-XXXXX.m4s
-                        // Match any standard DASH segment pattern
-                        var match = Regex.Match(fileName, @"-(\d+)\.m4s$");
-                        if (match.Success && int.TryParse(match.Groups[1].Value, out int number))
+                        // Parse stream ID and segment number from chunk-streamX-YYYYY.m4s
+                        // Regex matches: chunk-stream(\d+)-(\d+).m4s
+                        var match = Regex.Match(fileName, @"chunk-stream(\d+)-(\d+)\.m4s$");
+                        if (match.Success &&
+                            int.TryParse(match.Groups[1].Value, out int streamId) &&
+                            int.TryParse(match.Groups[2].Value, out int number))
                         {
-                            // We use the file creation time as the absolute source of truth for ordering
-                            // This handles crashes/restarts better than relying purely on folder names
                             var creationTime = File.GetCreationTimeUtc(file);
 
                             // Store relative path for the client to request: {TimestampFolder}/{FileName}
@@ -61,54 +61,84 @@ namespace Segra.Backend.Services
                                 Path = relativePath,
                                 Number = number,
                                 CreationTime = creationTime,
-                                Folder = folderName
+                                Folder = folderName,
+                                StreamId = streamId
                             });
                         }
                     }
                 }
 
-                // 2. Sort all segments by creation time
-                allSegments.Sort((a, b) => a.CreationTime.CompareTo(b.CreationTime));
+                // 2. Group by Stream ID
+                // We typically expect Stream 0 to be Video and Stream 1 to be Audio.
+                var streams = allSegments.GroupBy(s => s.StreamId).ToDictionary(g => g.Key, g => g.ToList());
 
-                if (allSegments.Count == 0) return "";
-
-                // 3. Filter segments to respect the buffer limit (Keep last X seconds)
-                // Since each segment is ~2s, we keep (bufferDuration / 2) segments
-                int maxSegments = Math.Max(10, bufferDurationSeconds / SegmentDuration);
-                if (allSegments.Count > maxSegments)
+                if (!streams.ContainsKey(0))
                 {
-                    // Keep the newest ones
-                    allSegments = allSegments.GetRange(allSegments.Count - maxSegments, maxSegments);
+                    // If no stream 0, we can't play video.
+                    Log.Warning($"No video segments (stream 0) found for game: {gameName}");
+                    return "";
                 }
 
-                if (allSegments.Count == 0) return "";
+                // 3. Filter segments to respect the buffer limit (Keep last X seconds)
+                // We determine the time window based on the Video stream (Stream 0)
+                var videoSegments = streams[0];
+                videoSegments.Sort((a, b) => a.CreationTime.CompareTo(b.CreationTime));
+
+                // Latest time in video stream
+                DateTime maxTime = videoSegments.Max(s => s.CreationTime);
+                DateTime minTime = maxTime.AddSeconds(-bufferDurationSeconds);
+
+                // Filter all streams to this window
+                var finalStreams = new Dictionary<int, List<SegmentInfo>>();
+
+                // We only care about Stream 0 (Video) and Stream 1 (Audio) for preview to ensure stability
+                int[] allowedStreams = { 0, 1 };
+
+                foreach (var id in allowedStreams)
+                {
+                    if (streams.ContainsKey(id))
+                    {
+                        var filtered = streams[id]
+                            .Where(s => s.CreationTime >= minTime)
+                            .OrderBy(s => s.CreationTime) // Ensure sorted by time
+                            .ToList();
+
+                        if (filtered.Count > 0)
+                        {
+                            finalStreams[id] = filtered;
+                        }
+                    }
+                }
+
+                if (!finalStreams.ContainsKey(0) || finalStreams[0].Count == 0) return "";
+
+                var finalVideoSegments = finalStreams[0];
 
                 // 4. Construct the MPD XML
-                // Anchor time: Creation time of the oldest kept segment
-                DateTime availabilityStartTime = allSegments[0].CreationTime;
+                // Anchor time: Creation time of the oldest kept video segment
+                DateTime availabilityStartTime = finalVideoSegments[0].CreationTime;
 
                 // Format for MPD: YYYY-MM-DDTHH:mm:ssZ
                 string availabilityStartTimeStr = availabilityStartTime.ToString("yyyy-MM-ddTHH:mm:ssZ");
 
-                // Get the initialization segment path (assume the newest session's init segment is valid for all)
-                // Ideally, they are identical if encoding settings haven't changed.
-                // We'll use the folder of the *newest* segment to find the init file.
-                string newestFolder = allSegments.Last().Folder;
-                string initSegmentPath = $"{newestFolder}/init-stream0.m4s";
+                // Get the initialization segment paths (assume newest session's init is valid)
+                string newestVideoFolder = finalVideoSegments.Last().Folder;
+                string initVideoPath = $"{newestVideoFolder}/init-stream0.m4s";
 
                 var sb = new StringBuilder();
                 sb.Append("<?xml version=\"1.0\" encoding=\"utf-8\"?>");
                 sb.Append($"<MPD xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns=\"urn:mpeg:dash:schema:mpd:2011\" xsi:schemaLocation=\"urn:mpeg:dash:schema:mpd:2011 http://standards.iso.org/ittf/PubliclyAvailableStandards/MPEG-DASH_schema_files/DASH-MPD.xsd\" type=\"dynamic\" minimumUpdatePeriod=\"PT2S\" availabilityStartTime=\"{availabilityStartTimeStr}\" minBufferTime=\"PT2S\" timeShiftBufferDepth=\"PT{bufferDurationSeconds * 2}S\" profiles=\"urn:mpeg:dash:profile:isoff-live:2011\">");
-                sb.Append($"<Period start=\"PT0S\" id=\"0\" duration=\"PT{allSegments.Count * SegmentDuration}S\">");
+
+                // Duration is based on video segments count
+                sb.Append($"<Period start=\"PT0S\" id=\"0\" duration=\"PT{finalVideoSegments.Count * SegmentDuration}S\">");
+
+                // Video Adaptation Set
                 sb.Append("<AdaptationSet mimeType=\"video/mp4\" segmentAlignment=\"true\" startWithSAP=\"1\" subsegmentAlignment=\"true\" subsegmentStartsWithSAP=\"1\">");
-                sb.Append("<Representation id=\"0\" codecs=\"avc1.640028\" bandwidth=\"4000000\">"); // Codec/bandwidth are placeholders, player usually adapts or ignores if init segment overrides
-
-                // We use SegmentList instead of SegmentTemplate because our files are in different folders (timestamps)
-                // and don't follow a single continuous numbering scheme (they reset to 1 in each folder).
+                sb.Append("<Representation id=\"0\" codecs=\"avc1.640028\" bandwidth=\"4000000\">");
                 sb.Append($"<SegmentList timescale=\"{Timescale}\" duration=\"{SegmentDuration * Timescale}\">");
-                sb.Append($"<Initialization sourceURL=\"{initSegmentPath}\" />");
+                sb.Append($"<Initialization sourceURL=\"{initVideoPath}\" />");
 
-                foreach (var seg in allSegments)
+                foreach (var seg in finalVideoSegments)
                 {
                     sb.Append($"<SegmentURL media=\"{seg.Path}\" />");
                 }
@@ -116,6 +146,31 @@ namespace Segra.Backend.Services
                 sb.Append("</SegmentList>");
                 sb.Append("</Representation>");
                 sb.Append("</AdaptationSet>");
+
+                // Audio Adaptation Set (Stream 1)
+                if (finalStreams.ContainsKey(1))
+                {
+                    var audioSegments = finalStreams[1];
+                    string newestAudioFolder = audioSegments.Last().Folder;
+                    string initAudioPath = $"{newestAudioFolder}/init-stream1.m4s";
+
+                    sb.Append("<AdaptationSet mimeType=\"audio/mp4\" segmentAlignment=\"true\" startWithSAP=\"1\">");
+                    // Assuming AAC audio, typical bandwidth/codec
+                    sb.Append("<Representation id=\"1\" codecs=\"mp4a.40.2\" bandwidth=\"128000\" audioSamplingRate=\"44100\">");
+                    sb.Append("<AudioChannelConfiguration schemeIdUri=\"urn:mpeg:dash:23003:3:audio_channel_configuration:2011\" value=\"2\" />");
+                    sb.Append($"<SegmentList timescale=\"{Timescale}\" duration=\"{SegmentDuration * Timescale}\">");
+                    sb.Append($"<Initialization sourceURL=\"{initAudioPath}\" />");
+
+                    foreach (var seg in audioSegments)
+                    {
+                        sb.Append($"<SegmentURL media=\"{seg.Path}\" />");
+                    }
+
+                    sb.Append("</SegmentList>");
+                    sb.Append("</Representation>");
+                    sb.Append("</AdaptationSet>");
+                }
+
                 sb.Append("</Period>");
                 sb.Append("</MPD>");
 
@@ -132,6 +187,7 @@ namespace Segra.Backend.Services
         {
             public required string Path { get; set; }
             public int Number { get; set; }
+            public int StreamId { get; set; }
             public DateTime CreationTime { get; set; }
             public required string Folder { get; set; }
         }

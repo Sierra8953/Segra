@@ -1104,6 +1104,7 @@ namespace Segra.Backend.Obs
                         Settings.Instance.State.UpdateRecordingEndTime(DateTime.Now);
 
                     _signalOutputStop = false;
+                    Log.Information("Calling obs_output_stop to signal stop.");
                     obs_output_stop(_output);
 
                     int attempts = 0;
