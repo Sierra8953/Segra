@@ -24,7 +24,7 @@ export default function UISettingsSection({
   return (
     <>
       <div className="p-4 bg-base-300 rounded-lg shadow-md border border-custom">
-        <h2 className="text-xl font-semibold mb-4">Segra</h2>
+        <h2 className="text-xl font-semibold mb-4">Application</h2>
         <div className="bg-base-200 px-4 py-3 rounded-lg space-y-3 border border-custom">
           <div className="flex items-center">
             <label className="flex items-center gap-2">
@@ -246,7 +246,7 @@ export default function UISettingsSection({
             <span className="leading-none">View Logs</span>
           </button>
           <div>
-            Segra{' '}
+            StreamDVR{' '}
             {__APP_VERSION__ === 'Developer Preview' ? __APP_VERSION__ : 'v' + __APP_VERSION__}
           </div>
         </div>
