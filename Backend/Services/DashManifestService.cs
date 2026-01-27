@@ -15,7 +15,7 @@ namespace Segra.Backend.Services
 
         /// <summary>
         /// Generates a "Virtual Manifest" that stitches together all DASH segments from all session folders
-        /// for a specific game into a single continuous timeline.
+        /// for a specific game into a single continuous timeline using Multi-Period DASH.
         /// </summary>
         public static async Task<string> GetVirtualManifest(string gameName, int bufferDurationSeconds)
         {
@@ -68,110 +68,118 @@ namespace Segra.Backend.Services
                     }
                 }
 
-                // 2. Group by Stream ID
-                // We typically expect Stream 0 to be Video and Stream 1 to be Audio.
-                var streams = allSegments.GroupBy(s => s.StreamId).ToDictionary(g => g.Key, g => g.ToList());
+                // 2. Filter segments to respect the buffer limit (Keep last X seconds)
+                // We determine the global time window based on the Video stream (Stream 0) across ALL sessions
+                var videoSegments = allSegments.Where(s => s.StreamId == 0).OrderBy(s => s.CreationTime).ToList();
 
-                if (!streams.ContainsKey(0))
+                if (videoSegments.Count == 0)
                 {
-                    // If no stream 0, we can't play video.
                     Log.Warning($"No video segments (stream 0) found for game: {gameName}");
                     return "";
                 }
-
-                // 3. Filter segments to respect the buffer limit (Keep last X seconds)
-                // We determine the time window based on the Video stream (Stream 0)
-                var videoSegments = streams[0];
-                videoSegments.Sort((a, b) => a.CreationTime.CompareTo(b.CreationTime));
 
                 // Latest time in video stream
                 DateTime maxTime = videoSegments.Max(s => s.CreationTime);
                 DateTime minTime = maxTime.AddSeconds(-bufferDurationSeconds);
 
-                // Filter all streams to this window
-                var finalStreams = new Dictionary<int, List<SegmentInfo>>();
+                // Filter all segments (audio and video) to this window
+                var filteredSegments = allSegments
+                    .Where(s => s.CreationTime >= minTime)
+                    .OrderBy(s => s.CreationTime)
+                    .ToList();
 
-                // We only care about Stream 0 (Video) and Stream 1 (Audio) for preview to ensure stability
-                int[] allowedStreams = { 0, 1 };
+                if (filteredSegments.Count == 0) return "";
 
-                foreach (var id in allowedStreams)
-                {
-                    if (streams.ContainsKey(id))
-                    {
-                        var filtered = streams[id]
-                            .Where(s => s.CreationTime >= minTime)
-                            .OrderBy(s => s.CreationTime) // Ensure sorted by time
-                            .ToList();
-
-                        if (filtered.Count > 0)
-                        {
-                            finalStreams[id] = filtered;
-                        }
-                    }
-                }
-
-                if (!finalStreams.ContainsKey(0) || finalStreams[0].Count == 0) return "";
-
-                var finalVideoSegments = finalStreams[0];
+                // 3. Group segments by Session (Folder) to create Periods
+                // The order of keys (Folders) should be chronological based on the first segment in each group
+                var sessionGroups = filteredSegments
+                    .GroupBy(s => s.Folder)
+                    .Select(g => new { Folder = g.Key, Segments = g.ToList(), StartTime = g.Min(s => s.CreationTime) })
+                    .OrderBy(g => g.StartTime)
+                    .ToList();
 
                 // 4. Construct the MPD XML
-                // Anchor time: Creation time of the oldest kept video segment
-                DateTime availabilityStartTime = finalVideoSegments[0].CreationTime;
-
-                // Format for MPD: YYYY-MM-DDTHH:mm:ssZ
+                // Anchor time: Creation time of the oldest kept video segment in the first period
+                // We use availabilityStartTime as the anchor for dynamic MPDs.
+                // Note: For multi-period dynamic, AST usually stays constant or updates rarely.
+                // Here we set it to the start of the buffer window.
+                DateTime availabilityStartTime = sessionGroups.First().StartTime;
                 string availabilityStartTimeStr = availabilityStartTime.ToString("yyyy-MM-ddTHH:mm:ssZ");
-
-                // Get the initialization segment paths (assume newest session's init is valid)
-                string newestVideoFolder = finalVideoSegments.Last().Folder;
-                string initVideoPath = $"{newestVideoFolder}/init-stream0.m4s";
 
                 var sb = new StringBuilder();
                 sb.Append("<?xml version=\"1.0\" encoding=\"utf-8\"?>");
                 sb.Append($"<MPD xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns=\"urn:mpeg:dash:schema:mpd:2011\" xsi:schemaLocation=\"urn:mpeg:dash:schema:mpd:2011 http://standards.iso.org/ittf/PubliclyAvailableStandards/MPEG-DASH_schema_files/DASH-MPD.xsd\" type=\"dynamic\" minimumUpdatePeriod=\"PT2S\" availabilityStartTime=\"{availabilityStartTimeStr}\" minBufferTime=\"PT2S\" timeShiftBufferDepth=\"PT{bufferDurationSeconds * 2}S\" profiles=\"urn:mpeg:dash:profile:isoff-live:2011\">");
 
-                // Duration is based on video segments count
-                sb.Append($"<Period start=\"PT0S\" id=\"0\" duration=\"PT{finalVideoSegments.Count * SegmentDuration}S\">");
+                // Track accumulated start time for periods if we were using static, but for dynamic with AST,
+                // periods just need 'start' relative to AST or be consecutive.
+                // We will let them be consecutive by just listing them (implicit start if not specified, or explicit relative start).
+                // Actually, for multi-period dynamic, simply listing them is safer if we calculate duration correctly.
 
-                // Video Adaptation Set
-                sb.Append("<AdaptationSet mimeType=\"video/mp4\" segmentAlignment=\"true\" startWithSAP=\"1\" subsegmentAlignment=\"true\" subsegmentStartsWithSAP=\"1\">");
-                sb.Append("<Representation id=\"0\" codecs=\"avc1.640028\" bandwidth=\"4000000\">");
-                sb.Append($"<SegmentList timescale=\"{Timescale}\" duration=\"{SegmentDuration * Timescale}\">");
-                sb.Append($"<Initialization sourceURL=\"{initVideoPath}\" />");
+                TimeSpan accumulatedDuration = TimeSpan.Zero;
 
-                foreach (var seg in finalVideoSegments)
+                foreach (var session in sessionGroups)
                 {
-                    sb.Append($"<SegmentURL media=\"{seg.Path}\" />");
-                }
+                    // Organize segments by Stream ID within this session
+                    var sessionStreams = session.Segments.GroupBy(s => s.StreamId).ToDictionary(g => g.Key, g => g.OrderBy(s => s.Number).ToList());
 
-                sb.Append("</SegmentList>");
-                sb.Append("</Representation>");
-                sb.Append("</AdaptationSet>");
+                    if (!sessionStreams.ContainsKey(0)) continue; // Skip sessions with no video in window
 
-                // Audio Adaptation Set (Stream 1)
-                if (finalStreams.ContainsKey(1))
-                {
-                    var audioSegments = finalStreams[1];
-                    string newestAudioFolder = audioSegments.Last().Folder;
-                    string initAudioPath = $"{newestAudioFolder}/init-stream1.m4s";
+                    var sessionVideo = sessionStreams[0];
+                    double sessionDurationSec = sessionVideo.Count * SegmentDuration;
 
-                    sb.Append("<AdaptationSet mimeType=\"audio/mp4\" segmentAlignment=\"true\" startWithSAP=\"1\">");
-                    // Assuming AAC audio, typical bandwidth/codec
-                    sb.Append("<Representation id=\"1\" codecs=\"mp4a.40.2\" bandwidth=\"128000\" audioSamplingRate=\"44100\">");
-                    sb.Append("<AudioChannelConfiguration schemeIdUri=\"urn:mpeg:dash:23003:3:audio_channel_configuration:2011\" value=\"2\" />");
+                    // Period ID must be unique
+                    string periodId = session.Folder;
+
+                    // Start time of the period relative to availabilityStartTime.
+                    // Since we filtered strictly by time, the first segment in this session is our anchor for this period.
+                    TimeSpan periodStartOffset = session.StartTime - availabilityStartTime;
+
+                    // To ensure continuity, we might want to just output 'duration' and let client calculate start.
+                    // But 'start' is safer for seeking.
+                    // We'll use the accumulated duration logic which is cleaner for stitching.
+
+                    sb.Append($"<Period id=\"{periodId}\" start=\"PT{accumulatedDuration.TotalSeconds}S\" duration=\"PT{sessionDurationSec}S\">");
+
+                    // Video Adaptation Set (Stream 0)
+                    string initVideoPath = $"{session.Folder}/init-stream0.m4s";
+
+                    sb.Append("<AdaptationSet mimeType=\"video/mp4\" segmentAlignment=\"true\" startWithSAP=\"1\" subsegmentAlignment=\"true\" subsegmentStartsWithSAP=\"1\">");
+                    sb.Append("<Representation id=\"0\" codecs=\"avc1.640028\" bandwidth=\"4000000\">");
                     sb.Append($"<SegmentList timescale=\"{Timescale}\" duration=\"{SegmentDuration * Timescale}\">");
-                    sb.Append($"<Initialization sourceURL=\"{initAudioPath}\" />");
-
-                    foreach (var seg in audioSegments)
+                    sb.Append($"<Initialization sourceURL=\"{initVideoPath}\" />");
+                    foreach (var seg in sessionVideo)
                     {
                         sb.Append($"<SegmentURL media=\"{seg.Path}\" />");
                     }
-
                     sb.Append("</SegmentList>");
                     sb.Append("</Representation>");
                     sb.Append("</AdaptationSet>");
+
+                    // Audio Adaptation Set (Stream 1)
+                    if (sessionStreams.ContainsKey(1))
+                    {
+                        var sessionAudio = sessionStreams[1];
+                        string initAudioPath = $"{session.Folder}/init-stream1.m4s";
+
+                        sb.Append("<AdaptationSet mimeType=\"audio/mp4\" segmentAlignment=\"true\" startWithSAP=\"1\">");
+                        sb.Append("<Representation id=\"1\" codecs=\"mp4a.40.2\" bandwidth=\"128000\" audioSamplingRate=\"44100\">");
+                        sb.Append("<AudioChannelConfiguration schemeIdUri=\"urn:mpeg:dash:23003:3:audio_channel_configuration:2011\" value=\"2\" />");
+                        sb.Append($"<SegmentList timescale=\"{Timescale}\" duration=\"{SegmentDuration * Timescale}\">");
+                        sb.Append($"<Initialization sourceURL=\"{initAudioPath}\" />");
+                        foreach (var seg in sessionAudio)
+                        {
+                            sb.Append($"<SegmentURL media=\"{seg.Path}\" />");
+                        }
+                        sb.Append("</SegmentList>");
+                        sb.Append("</Representation>");
+                        sb.Append("</AdaptationSet>");
+                    }
+
+                    sb.Append("</Period>");
+
+                    accumulatedDuration = accumulatedDuration.Add(TimeSpan.FromSeconds(sessionDurationSec));
                 }
 
-                sb.Append("</Period>");
                 sb.Append("</MPD>");
 
                 return sb.ToString();
