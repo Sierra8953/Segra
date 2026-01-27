@@ -1,16 +1,13 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useSettings, useSettingsUpdater } from '../Context/SettingsContext';
+import { useSettings } from '../Context/SettingsContext';
 import { Content, Selection } from '../Models/types';
 import DashPlayer from '../Components/DashPlayer';
-import ContentCard from '../Components/ContentCard';
-import { useSelectedVideo } from '../Context/SelectedVideoContext';
-import { MdSearch, MdLiveTv, MdContentCut, MdSave, MdRefresh, MdTimer } from 'react-icons/md';
+import { MdSearch, MdLiveTv, MdContentCut, MdSave, MdRefresh } from 'react-icons/md';
 import { sendMessageToBackend } from '../Utils/MessageUtils';
+import RecordingSettingsPanel from '../Components/RecordingSettingsPanel';
 
 export default function Sessions() {
-  const { state, gameSpecificConfig, replayBufferDuration } = useSettings();
-  const updateSettings = useSettingsUpdater();
-  const { setSelectedVideo } = useSelectedVideo();
+  const { state } = useSettings();
   const { recording } = state;
 
   // State for active game filter
@@ -159,24 +156,6 @@ export default function Sessions() {
       }, 1000);
   };
 
-  const currentBufferDuration = useMemo(() => {
-      if (!activeGame) return replayBufferDuration;
-      return gameSpecificConfig?.[activeGame]?.bufferDuration ?? replayBufferDuration;
-  }, [activeGame, gameSpecificConfig, replayBufferDuration]);
-
-  const handleBufferDurationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (!activeGame) return;
-      const val = parseInt(e.target.value);
-      if (!isNaN(val) && val > 0) {
-          updateSettings({
-              gameSpecificConfig: {
-                  ...gameSpecificConfig,
-                  [activeGame]: { bufferDuration: val }
-              }
-          });
-      }
-  };
-
   const formatTime = (time: number) => {
       const minutes = Math.floor(time / 60);
       const seconds = Math.floor(time % 60);
@@ -224,27 +203,6 @@ export default function Sessions() {
             )}
         </div>
 
-        {/* Game Specific Settings */}
-        {activeGame && (
-            <div className="p-4 border-t border-base-content/10 bg-base-300">
-                <label className="label">
-                    <span className="label-text flex items-center gap-2">
-                        <MdTimer /> Buffer Duration (s)
-                    </span>
-                </label>
-                <input
-                    type="number"
-                    className="input input-sm input-bordered w-full"
-                    value={currentBufferDuration}
-                    onChange={handleBufferDurationChange}
-                    min="10"
-                    max="3600"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                    For {activeGame}
-                </p>
-            </div>
-        )}
       </div>
 
       {/* Main Content */}
@@ -355,43 +313,8 @@ export default function Sessions() {
             )}
         </div>
 
-        {/* Sessions List */}
-        <div className="flex-1 overflow-y-auto p-4 bg-base-200">
-            <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold">
-                    Sessions for {activeGame || '...'}
-                </h3>
-                <span className="text-sm text-gray-500">{activeGameContent.length} recordings</span>
-            </div>
-
-            {activeGameContent.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                    {activeGameContent.map((content) => (
-                        <div key={content.fileName} className={`${activeVideo?.fileName === content.fileName ? 'ring-2 ring-primary rounded-xl' : ''}`}>
-                            <ContentCard
-                                content={content}
-                                type="Session"
-                                onClick={(video) => {
-                                    // Normally this sets selected video for the main editor.
-                                    // Here we might just want to switch the 'activeVideo' within this view?
-                                    // But activeVideo is computed from sorted list.
-                                    // This UI is tricky. If I click a card, I expect it to play in the player ABOVE.
-                                    // But 'activeVideo' logic currently forces "Live" or "Newest".
-                                    // I should add state for `manualActiveVideo`.
-
-                                    // Actually, let's keep it simple: Clicking a card goes to the dedicated Editor/Video page.
-                                    setSelectedVideo(video);
-                                }}
-                            />
-                        </div>
-                    ))}
-                </div>
-            ) : (
-                <div className="text-center py-10 text-gray-500">
-                    No recordings found for this game.
-                </div>
-            )}
-        </div>
+        {/* Settings Panel */}
+        <RecordingSettingsPanel activeGame={activeGame} />
       </div>
     </div>
   );
