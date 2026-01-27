@@ -245,8 +245,9 @@ namespace Segra.Backend.Api
 
                 string filePath = Path.Combine(Settings.Instance.ContentFolder, FolderNames.Sessions, gameFolder, fileName);
 
-                // If it is a request for the manifest (.mpd), generate the Virtual Manifest dynamically.
-                if (fileName.EndsWith(".mpd", StringComparison.OrdinalIgnoreCase))
+                // If it is a request for the virtual manifest (virtual.mpd), generate it dynamically.
+                // This allows us to serve a stitched timeline at the Game Root level.
+                if (fileName.Equals("virtual.mpd", StringComparison.OrdinalIgnoreCase))
                 {
                     try
                     {

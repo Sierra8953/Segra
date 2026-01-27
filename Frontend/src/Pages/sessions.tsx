@@ -111,27 +111,18 @@ export default function Sessions() {
             segmentLength = '/Sessions/'.length;
         }
 
+        // For DASH content (Live or recorded sessions), we always request the "virtual.mpd"
+        // This serves a dynamically patched manifest that stitches all available segments for the game
+        // into a single timeline.
+        // We ignore the specific file path on disk (which points to the latest chunk) and instead
+        // point to the Game Root so relative segment paths (Timestamp/chunk.m4s) resolve correctly.
         if (splitIndex !== -1) {
              const relativePath = normalizedPath.substring(splitIndex + segmentLength);
              const parts = relativePath.split('/');
-             // Expect Game/Game.mpd (2 parts) or Game/Timestamp/Timestamp.mpd (legacy 3 parts)
-             // With the new "Single Folder per Game" change:
-             // Path is likely: "Sessions/Overwatch 2/Overwatch 2.mpd"
-
-             if (parts.length >= 2) {
+             if (parts.length >= 1) {
                  const game = parts[0];
-                 // If the file is directly inside the game folder (new structure), fileName is just the last part
-                 // If it was nested (old structure), we might need to handle it, but the new requirement is "1 folder for each game"
-
-                 // If parts has > 2 elements, it might be legacy or subdirectory.
-                 // However, the backend is now configured to output to {Game}/{Game}.mpd
-                 // We need to pass the *relative file path* inside the game folder to the API.
-
-                 const fileParts = parts.slice(1);
-                 // Encode path segments individually
-                 const encodedRest = fileParts.map(p => encodeURIComponent(p)).join('/');
-
-                 return `http://localhost:2222/api/live/${encodeURIComponent(game)}/${encodedRest}?t=${refreshKey}`;
+                 // Force usage of virtual.mpd at the game root level
+                 return `http://localhost:2222/api/live/${encodeURIComponent(game)}/virtual.mpd?t=${refreshKey}`;
              }
         }
 

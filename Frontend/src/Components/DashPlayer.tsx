@@ -44,7 +44,6 @@ const DashPlayer: React.FC<DashPlayerProps> = ({
                     mode: 'liveCatchupModeLoLp'
                 },
                 buffer: {
-                    stableBufferTime: 2,
                     bufferToKeep: 60
                 },
                 gaps: {
