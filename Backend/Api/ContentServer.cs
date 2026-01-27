@@ -303,26 +303,46 @@ namespace Segra.Backend.Api
                 // Disable caching for manifest so updates are picked up
                 response.AddHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 
-                // For MPD requests, we use the DashManifestService to patch the manifest on-the-fly
-                // allowing persistent buffer playback (combining old and new segments).
-                // We don't use the standard file streaming logic below for MPDs.
+                // For MPD requests, we use the DashManifestService to generate a Virtual Manifest
+                // that stitches together all session folders into a single timeline.
                 try
                 {
-                    // We need the game name to get the buffer configuration.
-                    // It's not passed here directly, but we can infer it or use default.
-                    // For simplicity, we'll use the default or a reasonable large value if not easily accessible.
-                    // Ideally, pass game name in StreamContentFile or parse from path.
+                    // URL structure is /api/live/{GameName}/session.mpd
+                    // We extract GameName from the file path construction in HandleLiveRequest
+                    // fileName passed here is the full local path: .../Sessions/{GameName}/{Timestamp}/... or just .../Sessions/{GameName}/session.mpd?
 
-                    // Simple path parsing attempt: .../Sessions/{GameName}/{GameName}.mpd
+                    // In HandleLiveRequest:
+                    // string filePath = Path.Combine(..., FolderNames.Sessions, gameFolder, fileName);
+
+                    // We need the game name. Let's parse it from the path assuming standard structure.
+                    // Path: .../Sessions/{GameName}/session.mpd
+
                     string? gameName = null;
-                    string? dir = Path.GetDirectoryName(fileName);
-                    if (dir != null) gameName = new DirectoryInfo(dir).Name;
+                    // Go up two levels? No, fileName is the full path.
+                    // If request was /api/live/Overwatch 2/session.mpd
+                    // gameFolder = "Overwatch 2", fileName = "session.mpd"
+                    // filePath = .../Sessions/Overwatch 2/session.mpd
 
-                    int bufferDuration = Settings.Instance.GetGameBufferDuration(gameName ?? "");
+                    var sessionDir = new DirectoryInfo(Path.GetDirectoryName(fileName)!);
+                    // If fileName is inside a timestamp folder (not expected for the virtual manifest request), handle it.
+                    // But usually frontend requests .../Overwatch 2/session.mpd
+                    // So parent dir is "Overwatch 2"
 
-                    string patchedXml = await DashManifestService.GetPatchedManifest(fileName, bufferDuration);
+                    gameName = sessionDir.Name;
 
-                    byte[] bytes = System.Text.Encoding.UTF8.GetBytes(patchedXml);
+                    int bufferDuration = Settings.Instance.GetGameBufferDuration(gameName);
+
+                    // Generate the virtual manifest scanning all subfolders
+                    string virtualXml = await DashManifestService.GetVirtualManifest(gameName, bufferDuration);
+
+                    if (string.IsNullOrEmpty(virtualXml))
+                    {
+                        // If generation failed (empty folder?), 404
+                        response.StatusCode = (int)HttpStatusCode.NotFound;
+                        return;
+                    }
+
+                    byte[] bytes = System.Text.Encoding.UTF8.GetBytes(virtualXml);
                     response.ContentLength64 = bytes.Length;
                     await response.OutputStream.WriteAsync(bytes, 0, bytes.Length);
                     return;

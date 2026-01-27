@@ -920,23 +920,23 @@ namespace Segra.Backend.Obs
 
             if (isBackgroundMode)
             {
-                // In DASH mode, we use a single fixed folder per game to maintain a rolling buffer.
-                // Structure: Sessions/{Game}/{Game}.mpd
+                // In DASH mode, we use unique timestamped folders for each session.
+                // Structure: Sessions/{Game}/{Timestamp}/{Timestamp}.mpd
+                string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+                string sessionSubDir = Path.Combine(sessionDir, timestamp);
+                if (!Directory.Exists(sessionSubDir)) Directory.CreateDirectory(sessionSubDir);
 
-                // Use the game name for the manifest file (e.g., "Apex Legends.mpd")
-                videoOutputPath = Path.Combine(sessionDir, $"{sanitizedGameName}.mpd").Replace("\\", "/");
+                videoOutputPath = Path.Combine(sessionSubDir, $"{timestamp}.mpd").Replace("\\", "/");
 
                 int bufferDuration = Settings.Instance.GetGameBufferDuration(name);
 
-                // Determine start number for resumption
-                int startNumber = DashRecordingService.GetNextSegmentNumber(sessionDir);
-
-                // Prune old segments to maintain buffer limit across sessions
-                DashRecordingService.PruneOldSegments(sessionDir, bufferDuration);
+                // Note: startNumber is implicitly 1 for new sessions. The Virtual Manifest will handle stitching.
+                // We do NOT prune here; pruning will be handled by a separate background maintenance task or the Virtual Manifest service.
 
                 obs_data_set_string(outputSettings, "format_name", DashRecordingService.GetDashFormatName());
-                obs_data_set_string(outputSettings, "muxer_settings", DashRecordingService.GetDashMuxerSettings(bufferDuration, startNumber));
-                Log.Information($"Using DASH recording output: {videoOutputPath} with buffer {bufferDuration}s, start number: {startNumber}");
+                // We reset startNumber to 1 for each fresh session folder
+                obs_data_set_string(outputSettings, "muxer_settings", DashRecordingService.GetDashMuxerSettings(bufferDuration, 1));
+                Log.Information($"Using DASH recording output: {videoOutputPath} with buffer {bufferDuration}s");
             }
             else
             {

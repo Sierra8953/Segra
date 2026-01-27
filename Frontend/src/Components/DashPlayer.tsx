@@ -31,7 +31,7 @@ const DashPlayer: React.FC<DashPlayerProps> = ({
         const player = MediaPlayer().create();
         player.initialize(videoRef.current, source, autoplay);
 
-        // Configure for low latency live streaming
+        // Configure for low latency live streaming and gap skipping (dash.js v5 structure)
         player.updateSettings({
             streaming: {
                 lowLatencyEnabled: true,
@@ -40,6 +40,15 @@ const DashPlayer: React.FC<DashPlayerProps> = ({
                 },
                 liveCatchup: {
                     mode: 'liveCatchupModeLoLp'
+                },
+                buffer: {
+                    stableBufferTime: 2,
+                    bufferToKeep: 60
+                },
+                gaps: {
+                    jumpGaps: true,
+                    jumpLargeGaps: true,
+                    smallGapLimit: 1.5,
                 }
             }
         } as any);

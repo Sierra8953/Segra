@@ -42,6 +42,9 @@ namespace Segra.Backend.App
         [STAThread]
         static void Main(string[] args)
         {
+            // Set WebView2 environment variables to allow autoplay and disable CORS for local API access
+            Environment.SetEnvironmentVariable("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--autoplay-policy=no-user-gesture-required --disable-web-security");
+
             // Set process DPI aware to ensure we capture at physical resolution
             SetProcessDPIAware();
 
