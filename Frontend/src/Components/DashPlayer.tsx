@@ -32,9 +32,10 @@ const DashPlayer: React.FC<DashPlayerProps> = ({
         player.initialize(videoRef.current, source, autoplay);
 
         // Configure for low latency live streaming and gap skipping (dash.js v5 structure)
+        // lowLatencyEnabled is deprecated/removed in v5 settings structure (inferred from manifest or handled via delay)
+        // buffer settings are top-level or under streaming.buffer
         player.updateSettings({
             streaming: {
-                lowLatencyEnabled: true,
                 delay: {
                     liveDelay: 2.0
                 },
@@ -51,7 +52,7 @@ const DashPlayer: React.FC<DashPlayerProps> = ({
                     smallGapLimit: 1.5,
                 }
             }
-        } as any);
+        });
 
         playerRef.current = player;
 

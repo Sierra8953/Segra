@@ -156,7 +156,7 @@ const RecordingCard: React.FC<RecordingCardProps> = ({ recording, preRecording }
               data-tip={`${recording?.isUsingGameHook ? 'Game capture (using game hook)' : 'Display capture (not using game hook)'}`}
             >
               <div className={`swap swap-flip cursor-default overflow-hidden justify-center`}>
-                <input type="checkbox" checked={recording?.isUsingGameHook} />
+                <input type="checkbox" checked={recording?.isUsingGameHook} readOnly />
                 <div className={`swap-on`}>
                   <LuGamepad2 className="h-5 w-5 text-gray-300" />
                 </div>

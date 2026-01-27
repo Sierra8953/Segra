@@ -245,6 +245,38 @@ namespace Segra.Backend.Api
 
                 string filePath = Path.Combine(Settings.Instance.ContentFolder, FolderNames.Sessions, gameFolder, fileName);
 
+                // If it is a request for the manifest (.mpd), generate the Virtual Manifest dynamically.
+                if (fileName.EndsWith(".mpd", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        int bufferDuration = Settings.Instance.GetGameBufferDuration(gameFolder);
+                        string virtualXml = await DashManifestService.GetVirtualManifest(gameFolder, bufferDuration);
+
+                        if (string.IsNullOrEmpty(virtualXml))
+                        {
+                            Log.Warning($"Virtual manifest generation failed/empty for game: {gameFolder}");
+                            response.StatusCode = (int)HttpStatusCode.NotFound;
+                            return;
+                        }
+
+                        response.ContentType = "application/dash+xml";
+                        response.AddHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+
+                        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(virtualXml);
+                        response.ContentLength64 = bytes.Length;
+                        await response.OutputStream.WriteAsync(bytes, 0, bytes.Length);
+                        return;
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Error($"Error serving virtual manifest: {ex.Message}");
+                        response.StatusCode = (int)HttpStatusCode.InternalServerError;
+                        return;
+                    }
+                }
+
+                // For other files (segments), serve them directly
                 if (!File.Exists(filePath))
                 {
                     Log.Warning($"Live file not found: {filePath}");
@@ -302,56 +334,6 @@ namespace Segra.Backend.Api
                 response.ContentType = "application/dash+xml";
                 // Disable caching for manifest so updates are picked up
                 response.AddHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-
-                // For MPD requests, we use the DashManifestService to generate a Virtual Manifest
-                // that stitches together all session folders into a single timeline.
-                try
-                {
-                    // URL structure is /api/live/{GameName}/session.mpd
-                    // We extract GameName from the file path construction in HandleLiveRequest
-                    // fileName passed here is the full local path: .../Sessions/{GameName}/{Timestamp}/... or just .../Sessions/{GameName}/session.mpd?
-
-                    // In HandleLiveRequest:
-                    // string filePath = Path.Combine(..., FolderNames.Sessions, gameFolder, fileName);
-
-                    // We need the game name. Let's parse it from the path assuming standard structure.
-                    // Path: .../Sessions/{GameName}/session.mpd
-
-                    string? gameName = null;
-                    // Go up two levels? No, fileName is the full path.
-                    // If request was /api/live/Overwatch 2/session.mpd
-                    // gameFolder = "Overwatch 2", fileName = "session.mpd"
-                    // filePath = .../Sessions/Overwatch 2/session.mpd
-
-                    var sessionDir = new DirectoryInfo(Path.GetDirectoryName(fileName)!);
-                    // If fileName is inside a timestamp folder (not expected for the virtual manifest request), handle it.
-                    // But usually frontend requests .../Overwatch 2/session.mpd
-                    // So parent dir is "Overwatch 2"
-
-                    gameName = sessionDir.Name;
-
-                    int bufferDuration = Settings.Instance.GetGameBufferDuration(gameName);
-
-                    // Generate the virtual manifest scanning all subfolders
-                    string virtualXml = await DashManifestService.GetVirtualManifest(gameName, bufferDuration);
-
-                    if (string.IsNullOrEmpty(virtualXml))
-                    {
-                        // If generation failed (empty folder?), 404
-                        response.StatusCode = (int)HttpStatusCode.NotFound;
-                        return;
-                    }
-
-                    byte[] bytes = System.Text.Encoding.UTF8.GetBytes(virtualXml);
-                    response.ContentLength64 = bytes.Length;
-                    await response.OutputStream.WriteAsync(bytes, 0, bytes.Length);
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    Log.Error($"Failed to serve patched MPD: {ex.Message}. Falling back to file.");
-                    // Fall through to standard streaming
-                }
             }
             else if (fileName.EndsWith(".m4s", StringComparison.OrdinalIgnoreCase))
             {
