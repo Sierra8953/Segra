@@ -108,6 +108,9 @@ namespace Segra.Backend.Obs
             Log.Information("Replay buffer saved callback received");
         };
 
+        // Keep a reference to the log handler to prevent it from being garbage collected
+        private static log_handler_t? _logHandler;
+
         private static signal_callback_t? _hookedCallback;
         private static signal_callback_t? _unhookedCallback;
 
@@ -410,7 +413,7 @@ namespace Segra.Backend.Obs
             _ = Task.Run(ProcessLogQueueAsync);
 
             // Non-blocking log handler - just queues messages for async processing
-            base_set_log_handler(new log_handler_t((level, msg, args, p) =>
+            _logHandler = new log_handler_t((level, msg, args, p) =>
             {
                 try
                 {
@@ -422,7 +425,9 @@ namespace Segra.Backend.Obs
                 {
                     // Silently ignore marshaling errors to never block OBS
                 }
-            }), IntPtr.Zero);
+            });
+
+            base_set_log_handler(_logHandler, IntPtr.Zero);
 
             InstalledOBSVersion = obs_get_version_string();
             Log.Information("libobs version: " + InstalledOBSVersion);
