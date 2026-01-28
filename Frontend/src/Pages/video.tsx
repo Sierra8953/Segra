@@ -38,7 +38,7 @@ import WaveSurfer from 'wavesurfer.js';
 import { TbZoomIn, TbZoomOut } from 'react-icons/tb';
 import { IoIosFootball } from 'react-icons/io';
 import { AnimatePresence, motion } from 'framer-motion';
-import DashPlayer from '../Components/DashPlayer';
+import MpvPlayer from '../Components/MpvPlayer';
 
 // Converts time string in format "HH:MM:SS.mmm" to seconds
 const timeStringToSeconds = (timeStr: string): number => {
@@ -1375,11 +1375,10 @@ export default function VideoComponent({ video }: { video: Content }) {
           >
             <div className={videoWrapperClassName}>
               {video.isLive ? (
-                <DashPlayer
+                <MpvPlayer
                   url={getVideoPath()}
                   className="w-full h-full"
                   autoplay
-                  controls
                 />
               ) : (
                 <video

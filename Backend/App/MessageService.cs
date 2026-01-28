@@ -286,6 +286,39 @@ namespace Segra.Backend.App
                                 }
                             }
                             break;
+                        case "StartMpv":
+                            await MpvService.StartMpv();
+                            break;
+                        case "StopMpv":
+                            MpvService.StopMpv();
+                            break;
+                        case "MpvLoad":
+                            if (root.TryGetProperty("Parameters", out var mpvLoadParams) &&
+                                mpvLoadParams.TryGetProperty("url", out var urlEl))
+                            {
+                                await MpvService.LoadFile(urlEl.GetString() ?? "");
+                            }
+                            break;
+                        case "MpvPlay":
+                            await MpvService.Play();
+                            break;
+                        case "MpvPause":
+                            await MpvService.Pause();
+                            break;
+                        case "MpvSeek":
+                            if (root.TryGetProperty("Parameters", out var mpvSeekParams) &&
+                                mpvSeekParams.TryGetProperty("time", out var timeEl))
+                            {
+                                await MpvService.Seek(timeEl.GetDouble());
+                            }
+                            break;
+                        case "MpvSetVolume":
+                            if (root.TryGetProperty("Parameters", out var mpvVolParams) &&
+                                mpvVolParams.TryGetProperty("volume", out var volEl))
+                            {
+                                await MpvService.SetVolume(volEl.GetDouble());
+                            }
+                            break;
                         default:
                             Log.Information($"Unknown method: {method}");
                             break;

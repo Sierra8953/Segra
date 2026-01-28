@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useSettings } from '../Context/SettingsContext';
 import { Content, Selection } from '../Models/types';
-import DashPlayer from '../Components/DashPlayer';
+import MpvPlayer from '../Components/MpvPlayer';
 import { MdSearch, MdLiveTv, MdContentCut, MdSave, MdRefresh } from 'react-icons/md';
 import { sendMessageToBackend } from '../Utils/MessageUtils';
 import RecordingSettingsPanel from '../Components/RecordingSettingsPanel';
@@ -213,12 +213,11 @@ export default function Sessions() {
             {activeVideo ? (
                 <div className="relative flex-1 bg-black min-h-0">
                     {activeVideo.isLive || activeVideo.filePath.endsWith('.mpd') ? (
-                        <DashPlayer
+                        <MpvPlayer
                             key={`${activeVideo.filePath}-${refreshKey}`}
                             url={getVideoUrl(activeVideo)}
                             className="w-full h-full"
                             autoplay={true}
-                            controls={true}
                             onTimeUpdate={setCurrentTime}
                             onDurationChange={setDuration}
                         />
