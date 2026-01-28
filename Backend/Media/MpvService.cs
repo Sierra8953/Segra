@@ -266,6 +266,30 @@ namespace Segra.Backend.Media
                 ZipFile.ExtractToDirectory(zipPath, extractPath);
                 Log.Information("MPV extracted successfully.");
 
+                // Handle nested folder structure (if zip has a root folder)
+                var mpvExe = Directory.GetFiles(extractPath, "mpv.exe", SearchOption.AllDirectories).FirstOrDefault();
+                if (mpvExe != null)
+                {
+                    string targetPath = Path.Combine(extractPath, "mpv.exe");
+                    if (!Path.Equals(mpvExe, targetPath))
+                    {
+                        Log.Information($"Moving MPV from {mpvExe} to {targetPath}");
+                        // Move all files from the subfolder to the root extract path
+                        string subfolder = Path.GetDirectoryName(mpvExe)!;
+                        foreach (var file in Directory.GetFiles(subfolder))
+                        {
+                            string dest = Path.Combine(extractPath, Path.GetFileName(file));
+                            if (File.Exists(dest)) File.Delete(dest);
+                            File.Move(file, dest);
+                        }
+                        // Cleanup empty subfolder
+                        if (subfolder != extractPath)
+                        {
+                            try { Directory.Delete(subfolder, true); } catch { /* ignore */ }
+                        }
+                    }
+                }
+
                 File.Delete(zipPath);
 
                 await MessageService.SendFrontendMessage("MpvDownloadStatus", new { status = "Ready", progress = 100 });
