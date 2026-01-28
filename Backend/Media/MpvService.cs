@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO.Compression;
 using System.IO.Pipes;
 using System.Text;
 using System.Text.Json;
@@ -28,12 +29,18 @@ namespace Segra.Backend.Media
         {
             if (IsRunning) return;
 
-            // Ensure MPV exists (placeholder for download logic)
+            // Ensure MPV exists
             if (!File.Exists(MpvPath))
             {
-                Log.Error($"MPV executable not found at {MpvPath}");
-                // In a real scenario, trigger download here
-                return;
+                Log.Information($"MPV executable not found at {MpvPath}. Attempting to download...");
+                await DownloadMpvAsync();
+
+                if (!File.Exists(MpvPath))
+                {
+                    Log.Error("Failed to download/extract MPV. Playback will not work.");
+                    await MessageService.ShowModal("Player Error", "Failed to download the video player component (MPV). Please restart the application or check your internet connection.", "error");
+                    return;
+                }
             }
 
             try
@@ -198,6 +205,75 @@ namespace Segra.Backend.Media
             catch
             {
                 // Ignore parse errors
+            }
+        }
+
+        private static async Task DownloadMpvAsync()
+        {
+            // URL to a known zip release of MPV (nb533/mpv-winbuild-cmake provides reliable zips)
+            // Using a specific commit version to ensure compatibility
+            string downloadUrl = "https://github.com/nb533/mpv-winbuild-cmake/releases/download/2023-09-17/mpv-x86_64-20230917-git-446a066.zip";
+            string zipPath = Path.Combine(Path.GetTempPath(), "mpv_download.zip");
+            string extractPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "mpv");
+
+            try
+            {
+                await MessageService.SendFrontendMessage("MpvDownloadStatus", new { status = "Downloading player component...", progress = 0 });
+
+                using (var client = new HttpClient())
+                {
+                    using (var response = await client.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead))
+                    {
+                        response.EnsureSuccessStatusCode();
+
+                        var totalBytes = response.Content.Headers.ContentLength ?? -1L;
+                        using (var contentStream = await response.Content.ReadAsStreamAsync())
+                        using (var fileStream = new FileStream(zipPath, FileMode.Create, FileAccess.Write, FileShare.None, 8192, true))
+                        {
+                            var buffer = new byte[8192];
+                            long totalRead = 0;
+                            int bytesRead;
+                            int lastProgress = 0;
+
+                            while ((bytesRead = await contentStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                            {
+                                await fileStream.WriteAsync(buffer, 0, bytesRead);
+                                totalRead += bytesRead;
+
+                                if (totalBytes != -1)
+                                {
+                                    int progress = (int)((totalRead * 100) / totalBytes);
+                                    if (progress > lastProgress)
+                                    {
+                                        lastProgress = progress;
+                                        await MessageService.SendFrontendMessage("MpvDownloadStatus", new { status = "Downloading player component...", progress });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                await MessageService.SendFrontendMessage("MpvDownloadStatus", new { status = "Extracting player component...", progress = 100 });
+                Log.Information("MPV download complete. Extracting...");
+
+                if (Directory.Exists(extractPath))
+                {
+                    Directory.Delete(extractPath, true);
+                }
+                Directory.CreateDirectory(extractPath);
+
+                ZipFile.ExtractToDirectory(zipPath, extractPath);
+                Log.Information("MPV extracted successfully.");
+
+                File.Delete(zipPath);
+
+                await MessageService.SendFrontendMessage("MpvDownloadStatus", new { status = "Ready", progress = 100 });
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"Error downloading MPV: {ex.Message}");
+                if (File.Exists(zipPath)) File.Delete(zipPath);
             }
         }
     }
