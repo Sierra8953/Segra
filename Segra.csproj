@@ -39,6 +39,7 @@
     <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
     <PackageReference Include="Serilog.Sinks.Debug" Version="3.0.0" />
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+    <PackageReference Include="SharpCompress" Version="0.44.5" />
     <PackageReference Include="Supabase" Version="1.1.1" />
     <PackageReference Include="System.Management" Version="10.0.0" />
     <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="6.1.2" />
@@ -54,6 +55,7 @@
   <ItemGroup>
     <Compile Remove="libobs-sharp\**\*.cs" />
     <None Include="libobs-sharp\**\*.cs" />
+    <Compile Remove="Tools\**" />
   </ItemGroup>
 
   <ItemGroup>
@@ -68,6 +70,7 @@
   <ItemGroup>
     <None Remove="Resources\app.png" />
     <None Remove="Resources\icon.ico" />
+    <None Include="Tools\**" />
   </ItemGroup>
 
   <ItemGroup>
@@ -113,6 +116,21 @@
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
     </None>
   </ItemGroup>
+
+  <Target Name="PrepareMpv" BeforeTargets="Build">
+    <Exec Command="dotnet run --project &quot;$(MSBuildThisFileDirectory)Tools\MpvSetup\MpvSetup.csproj&quot;" />
+    <ItemGroup>
+      <_MpvFiles Include="Backend/mpv/**/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_MpvFiles)" DestinationFolder="$(OutputPath)/mpv/%(RecursiveDir)" SkipUnchangedFiles="true" />
+    <ItemGroup>
+      <Content Include="Backend/mpv/**/*">
+        <Link>mpv/%(RecursiveDir)%(Filename)%(Extension)</Link>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <Visible>false</Visible>
+      </Content>
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <Content Include="wwwroot\**\*">

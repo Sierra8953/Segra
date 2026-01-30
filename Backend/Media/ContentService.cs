@@ -143,6 +143,12 @@ namespace Segra.Backend.Media
             }
         }
 
+        public static async Task GenerateThumbnailAndWaveform(string filePath, Content.ContentType type)
+        {
+            await CreateThumbnail(filePath, type);
+            await CreateWaveformFile(filePath, type);
+        }
+
         public static async Task CreateThumbnail(string filePath, Content.ContentType type)
         {
             if (Path.GetExtension(filePath).Equals(".mpd", StringComparison.OrdinalIgnoreCase))

@@ -1156,8 +1156,13 @@ namespace Segra.Backend.Obs
                         else
                         {
                             // If file somehow still exists (maybe remove_at_exit failed or wasn't used), we treat it as valid.
-                            // But for DASH, we don't generate thumbnails/waveforms here usually.
                             Log.Information($"Recording file still exists: {filePath}");
+
+                            // If this was a Manual recording (standard MP4), generate thumbnails now
+                            if (!isBackgroundMode && filePath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
+                            {
+                                await ContentService.GenerateThumbnailAndWaveform(filePath, Content.ContentType.Session);
+                            }
                         }
                     }
 

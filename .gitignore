@@ -355,3 +355,4 @@ MigrationBackup/
 /obs-studio-build
 /build-libobs.cmd
 /Resources/FFmpeg/ffmpeg.exe
+Backend/mpv/

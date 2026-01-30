@@ -6,6 +6,8 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Segra.Backend.App;
 using Serilog;
+using SharpCompress.Archives;
+using SharpCompress.Common;
 
 namespace Segra.Backend.Media
 {
@@ -210,11 +212,11 @@ namespace Segra.Backend.Media
 
         private static async Task DownloadMpvAsync()
         {
-            // URL to a known zip release of MPV (nb533/mpv-winbuild-cmake provides reliable zips)
-            // Using a specific commit version to ensure compatibility
-            string downloadUrl = "https://github.com/nb533/mpv-winbuild-cmake/releases/download/2023-09-17/mpv-x86_64-20230917-git-446a066.zip";
-            string zipPath = Path.Combine(Path.GetTempPath(), "mpv_download.zip");
+            // URL to the specific MPV build requested (7z archive)
+            string downloadUrl = "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20260122/mpv-x86_64-v3-20260122-git-6e54aa3.7z";
+            string archivePath = Path.Combine(Path.GetTempPath(), "mpv_download.7z");
             string extractPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "mpv");
+            string tempExtractPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "mpv_temp");
 
             try
             {
@@ -228,7 +230,7 @@ namespace Segra.Backend.Media
 
                         var totalBytes = response.Content.Headers.ContentLength ?? -1L;
                         using (var contentStream = await response.Content.ReadAsStreamAsync())
-                        using (var fileStream = new FileStream(zipPath, FileMode.Create, FileAccess.Write, FileShare.None, 8192, true))
+                        using (var fileStream = new FileStream(archivePath, FileMode.Create, FileAccess.Write, FileShare.None, 8192, true))
                         {
                             var buffer = new byte[8192];
                             long totalRead = 0;
@@ -257,47 +259,56 @@ namespace Segra.Backend.Media
                 await MessageService.SendFrontendMessage("MpvDownloadStatus", new { status = "Extracting player component...", progress = 100 });
                 Log.Information("MPV download complete. Extracting...");
 
-                if (Directory.Exists(extractPath))
-                {
-                    Directory.Delete(extractPath, true);
-                }
+                if (Directory.Exists(extractPath)) Directory.Delete(extractPath, true);
                 Directory.CreateDirectory(extractPath);
 
-                ZipFile.ExtractToDirectory(zipPath, extractPath);
-                Log.Information("MPV extracted successfully.");
+                if (Directory.Exists(tempExtractPath)) Directory.Delete(tempExtractPath, true);
+                Directory.CreateDirectory(tempExtractPath);
 
-                // Handle nested folder structure (if zip has a root folder)
-                var mpvExe = Directory.GetFiles(extractPath, "mpv.exe", SearchOption.AllDirectories).FirstOrDefault();
-                if (mpvExe != null)
+                using (var archive = ArchiveFactory.Open(archivePath))
                 {
-                    string targetPath = Path.Combine(extractPath, "mpv.exe");
-                    if (!Path.Equals(mpvExe, targetPath))
+                    foreach (var entry in archive.Entries.Where(entry => !entry.IsDirectory))
                     {
-                        Log.Information($"Moving MPV from {mpvExe} to {targetPath}");
-                        // Move all files from the subfolder to the root extract path
-                        string subfolder = Path.GetDirectoryName(mpvExe)!;
-                        foreach (var file in Directory.GetFiles(subfolder))
+                        entry.WriteToDirectory(tempExtractPath, new ExtractionOptions
                         {
-                            string dest = Path.Combine(extractPath, Path.GetFileName(file));
-                            if (File.Exists(dest)) File.Delete(dest);
-                            File.Move(file, dest);
-                        }
-                        // Cleanup empty subfolder
-                        if (subfolder != extractPath)
-                        {
-                            try { Directory.Delete(subfolder, true); } catch { /* ignore */ }
-                        }
+                            ExtractFullPath = true,
+                            Overwrite = true
+                        });
                     }
                 }
+                Log.Information("MPV extracted successfully.");
 
-                File.Delete(zipPath);
+                // Flatten directory structure
+                var mpvExe = Directory.GetFiles(tempExtractPath, "mpv.exe", SearchOption.AllDirectories).FirstOrDefault();
+                if (mpvExe != null)
+                {
+                    string parentDir = Path.GetDirectoryName(mpvExe)!;
+                    foreach (var file in Directory.GetFiles(parentDir))
+                    {
+                        string dest = Path.Combine(extractPath, Path.GetFileName(file));
+                        File.Move(file, dest);
+                    }
+                    foreach (var dir in Directory.GetDirectories(parentDir))
+                    {
+                        string dest = Path.Combine(extractPath, Path.GetFileName(dir));
+                        Directory.Move(dir, dest);
+                    }
+                }
+                else
+                {
+                    Log.Error("mpv.exe not found in downloaded archive.");
+                }
+
+                // Cleanup
+                try { Directory.Delete(tempExtractPath, true); } catch { /* ignore */ }
+                File.Delete(archivePath);
 
                 await MessageService.SendFrontendMessage("MpvDownloadStatus", new { status = "Ready", progress = 100 });
             }
             catch (Exception ex)
             {
                 Log.Error($"Error downloading MPV: {ex.Message}");
-                if (File.Exists(zipPath)) File.Delete(zipPath);
+                if (File.Exists(archivePath)) File.Delete(archivePath);
             }
         }
     }
