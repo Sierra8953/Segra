@@ -213,6 +213,7 @@ namespace Segra.Backend.Media
         private static async Task DownloadMpvAsync()
         {
             // URL to the specific MPV build requested (7z archive)
+            // Using the shinchiro build which is considered the standard "Dev" build for Windows with V3 support
             string downloadUrl = "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20260122/mpv-x86_64-v3-20260122-git-6e54aa3.7z";
             string archivePath = Path.Combine(Path.GetTempPath(), "mpv_download.7z");
             string extractPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "mpv");

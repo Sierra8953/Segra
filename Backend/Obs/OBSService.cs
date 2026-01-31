@@ -360,7 +360,9 @@ namespace Segra.Backend.Obs
                     Type = Content.ContentType.Session.ToString(), // Source type is Session (the live dash)
                     StartTime = startTime,
                     EndTime = endTime,
-                    FileName = "session",
+                    // Use "virtual" to instruct ClipService to build the virtual manifest for this clip,
+                    // ensuring we can access the full stitched timeline.
+                    FileName = "virtual",
                     Game = recording.Game,
                     Title = $"{titlePrefix} {DateTime.Now:yyyy-MM-dd HH:mm:ss}",
                     IgdbId = 0

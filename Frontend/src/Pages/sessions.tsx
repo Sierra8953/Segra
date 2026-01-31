@@ -135,12 +135,16 @@ export default function Sessions() {
 
       setIsSavingClip(true);
 
+      // Check if we are playing DASH content (Live or .mpd)
+      const isDash = activeVideo.isLive || activeVideo.filePath.endsWith('.mpd');
+
       const selection: Selection = {
           id: Math.floor(Math.random() * 1000000),
           type: activeVideo.type,
           startTime: clipStart,
           endTime: clipEnd,
-          fileName: activeVideo.fileName, // Backend will likely ignore this for Session stitching, or use it to find source
+          // If DASH/Live, use "virtual" to instruct backend to stitch from the rolling buffer
+          fileName: isDash ? "virtual" : activeVideo.fileName,
           game: activeVideo.game,
           title: `Clip ${new Date().toLocaleString()}`,
           isLoading: true
