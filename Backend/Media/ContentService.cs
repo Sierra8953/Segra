@@ -71,10 +71,27 @@ namespace Segra.Backend.Media
                     Log.Warning($"Failed to build audio track names for metadata: {ex.Message}");
                 }
 
-                bool isLive = Path.GetExtension(filePath).Equals(".mpd", StringComparison.OrdinalIgnoreCase);
+                // Detect "Live" content. For fMP4 (Background mode), we treat the active growing file as live.
+                // We rely on the caller or context, but usually active files in session folders are live.
+                // However, checking extension alone isn't enough for .mp4.
+                // We can check if the file is currently being written to (locked)? Or just assume if type is Session and it's new.
+                // For now, let's assume all newly created Session content is potentially live if it's fMP4.
+                // But specifically for this logic, we want to skip duration probe if it's growing.
 
-                // For live/DASH content, we skip duration probe as the file might be incomplete or zero-length initially
-                // and probing it with FFmpeg can cause timeouts.
+                // If it's the active recording file (passed from OBSService), we can mark it live.
+                // But CreateMetadataFile is generic.
+                // Let's assume if it's fMP4 (based on flags we use) or just check for read lock?
+                // Actually, getting duration of a growing fMP4 usually works fast or returns partial duration.
+                // Let's just catch errors.
+
+                bool isLive = false;
+                // If the file path matches the currently active recording path, it is live.
+                if (Settings.Instance.State.Recording != null &&
+                    Path.GetFullPath(filePath).Equals(Path.GetFullPath(Settings.Instance.State.Recording.FilePath ?? ""), StringComparison.OrdinalIgnoreCase))
+                {
+                    isLive = true;
+                }
+
                 var duration = isLive ? TimeSpan.Zero : await GetVideoDurationAsync(filePath);
 
                 var metadataContent = new Content

@@ -319,6 +319,16 @@ namespace Segra.Backend.App
                                 await MpvService.SetVolume(volEl.GetDouble());
                             }
                             break;
+                        case "UpdateMpvBounds":
+                            if (root.TryGetProperty("Parameters", out var boundsParams) &&
+                                boundsParams.TryGetProperty("x", out var xEl) &&
+                                boundsParams.TryGetProperty("y", out var yEl) &&
+                                boundsParams.TryGetProperty("width", out var wEl) &&
+                                boundsParams.TryGetProperty("height", out var hEl))
+                            {
+                                MpvService.UpdateBounds(xEl.GetInt32(), yEl.GetInt32(), wEl.GetInt32(), hEl.GetInt32());
+                            }
+                            break;
                         default:
                             Log.Information($"Unknown method: {method}");
                             break;

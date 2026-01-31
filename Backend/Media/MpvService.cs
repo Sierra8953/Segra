@@ -5,9 +5,11 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Segra.Backend.App;
+using Segra.Backend.Windows;
 using Serilog;
 using SharpCompress.Archives;
 using SharpCompress.Common;
+using System.Runtime.InteropServices;
 
 namespace Segra.Backend.Media
 {
@@ -47,20 +49,45 @@ namespace Segra.Backend.Media
 
             try
             {
+                // Start MPV with arguments optimized for embedding/overlay
+                // --no-border: Remove window decorations
+                // --no-taskbar-progress: Don't show in taskbar (optional, depends on preference)
+                // --ontop: Keep it on top initially (we manage Z-order manually usually)
+                // --wid: If we had a child window handle. Since we use overlay, we manage position manually.
+                // --input-vo-keyboard=yes: Capture keyboard input if focused
+
                 _mpvProcess = new Process
                 {
                     StartInfo = new ProcessStartInfo
                     {
                         FileName = MpvPath,
-                        Arguments = $"--idle=yes --input-ipc-server={PipePath} --keep-open=yes --force-window=yes --title=\"StreamDVR Player\"",
+                        Arguments = $"--idle=yes --input-ipc-server={PipePath} --keep-open=yes --no-border --no-taskbar-progress --force-window=immediate --title=\"StreamDVR Player\"",
                         UseShellExecute = false,
-                        CreateNoWindow = false // Let it create its own window
+                        CreateNoWindow = false
                     }
                 };
 
                 _mpvProcess.Start();
                 _isRunning = true;
                 Log.Information("MPV process started.");
+
+                // Wait for window handle to be created
+                int attempts = 0;
+                while (_mpvProcess.MainWindowHandle == IntPtr.Zero && attempts < 20)
+                {
+                    await Task.Delay(100);
+                    _mpvProcess.Refresh();
+                    attempts++;
+                }
+
+                // Initial setup for the window style if needed (e.g. remove from taskbar)
+                if (_mpvProcess.MainWindowHandle != IntPtr.Zero)
+                {
+                    // Remove WS_EX_APPWINDOW to hide from taskbar if desired, add WS_EX_TOOLWINDOW
+                    var exStyle = WindowUtils.GetWindowLong(_mpvProcess.MainWindowHandle, WindowUtils.GWL_EXSTYLE);
+                    exStyle = (exStyle & ~WindowUtils.WS_EX_APPWINDOW) | WindowUtils.WS_EX_TOOLWINDOW | WindowUtils.WS_EX_NOACTIVATE;
+                    WindowUtils.SetWindowLong(_mpvProcess.MainWindowHandle, WindowUtils.GWL_EXSTYLE, exStyle);
+                }
 
                 // Start IPC connection loop
                 _cts = new CancellationTokenSource();
@@ -116,6 +143,41 @@ namespace Segra.Backend.Media
         public static async Task SetVolume(double volume) // 0-100
         {
             await SendCommand("set_property", "volume", volume);
+        }
+
+        [DllImport("user32.dll")]
+        private static extern bool ClientToScreen(IntPtr hWnd, ref POINT lpPoint);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct POINT
+        {
+            public int x;
+            public int y;
+        }
+
+        public static void UpdateBounds(int x, int y, int width, int height)
+        {
+            if (_mpvProcess == null || _mpvProcess.HasExited || _mpvProcess.MainWindowHandle == IntPtr.Zero) return;
+
+            try
+            {
+                // The coordinates (x, y) received from frontend are relative to the WebView client area.
+                // We need to convert them to Screen coordinates using the main window handle.
+
+                // Assuming Program.MainWindow.WindowHandle is accessible.
+                // Photino exposes WindowHandle.
+                IntPtr mainHandle = Program.MainWindow.WindowHandle;
+
+                POINT p = new POINT { x = x, y = y };
+                ClientToScreen(mainHandle, ref p);
+
+                // Ensure the window is top-most and positioned correctly at Screen Coordinates
+                WindowUtils.SetWindowPos(_mpvProcess.MainWindowHandle, WindowUtils.HWND_TOPMOST, p.x, p.y, width, height, WindowUtils.SWP_NOACTIVATE | WindowUtils.SWP_SHOWWINDOW);
+            }
+            catch (Exception ex)
+            {
+                // Log.Warning($"Failed to update MPV bounds: {ex.Message}"); // Reduce log noise
+            }
         }
 
         private static async Task SendCommand(string command, params object[] args)

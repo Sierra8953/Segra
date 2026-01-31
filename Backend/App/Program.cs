@@ -30,7 +30,7 @@ namespace Segra.Backend.App
         public static bool IsFirstRun { get; private set; } = false;
         private static readonly AutoResetEvent ShowWindowEvent = new AutoResetEvent(false);
         public static bool hasLoadedInitialSettings = false;
-        public static PhotinoWindow? Window { get; private set; }
+        public static PhotinoWindow? MainWindow { get; private set; }
         private static readonly string LogFilePath =
           Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Segra", "logs.log");
         private const string PipeName = "Segra_SingleInstance";
@@ -365,14 +365,14 @@ namespace Segra.Backend.App
         {
             try
             {
-                if (Window == null) return;
+                if (MainWindow == null) return;
 
                 if (enabled)
                 {
-                    _wasMaximizedBeforeFullscreen = Window.Maximized;
-                    _windowSizeBeforeFullscreen = Window.Size;
-                    _windowLocationBeforeFullscreen = Window.Location;
-                    Window.SetMaximized(true);
+                    _wasMaximizedBeforeFullscreen = MainWindow.Maximized;
+                    _windowSizeBeforeFullscreen = MainWindow.Size;
+                    _windowLocationBeforeFullscreen = MainWindow.Location;
+                    MainWindow.SetMaximized(true);
                 }
                 else
                 {
@@ -383,13 +383,13 @@ namespace Segra.Backend.App
                     else if (_windowSizeBeforeFullscreen.HasValue && _windowLocationBeforeFullscreen.HasValue)
                     {
                         // Was not maximized, restore size and position
-                        Window.SetMaximized(false);
-                        Window.SetSize(_windowSizeBeforeFullscreen.Value);
-                        Window.SetLocation(_windowLocationBeforeFullscreen.Value);
+                        MainWindow.SetMaximized(false);
+                        MainWindow.SetSize(_windowSizeBeforeFullscreen.Value);
+                        MainWindow.SetLocation(_windowLocationBeforeFullscreen.Value);
                     }
                     else
                     {
-                        Window.SetMaximized(false);
+                        MainWindow.SetMaximized(false);
                     }
                 }
             }
@@ -401,20 +401,20 @@ namespace Segra.Backend.App
 
         private static async Task ShowApplicationWindow()
         {
-            Log.Information("Showing application window. Window is " + (Window == null ? "null" : "not null"));
-            if (Window == null)
+            Log.Information("Showing application window. Window is " + (MainWindow == null ? "null" : "not null"));
+            if (MainWindow == null)
             {
                 // Schedule the foreground operations with a delay before calling LoadFrontend
                 _ = Task.Run(async () =>
                 {
                     await Task.Delay(200);
                     Log.Information("Bringing application window to foreground from scheduled task");
-                    if (Window != null)
+                    if (MainWindow != null)
                     {
-                        Window.SetMinimized(false);
-                        Window.SetTopMost(true);
+                        MainWindow.SetMinimized(false);
+                        MainWindow.SetTopMost(true);
                         await Task.Delay(200);
-                        Window.SetTopMost(false);
+                        MainWindow.SetTopMost(false);
                         Log.Information("Application window brought to foreground");
                     }
                 });
@@ -424,17 +424,17 @@ namespace Segra.Backend.App
             else
             {
                 Log.Information("Bringing application window to foreground. Window is not null");
-                Window.SetMinimized(false);
-                Window.SetTopMost(true);
+                MainWindow.SetMinimized(false);
+                MainWindow.SetTopMost(true);
                 await Task.Delay(200);
-                Window.SetTopMost(false);
+                MainWindow.SetTopMost(false);
                 Log.Information("Application window brought to foreground");
             }
         }
 
         private static void HideApplicationWindow()
         {
-            Window?.SetMinimized(true);
+            MainWindow?.SetMinimized(true);
 
             IntPtr hWnd = Process.GetCurrentProcess().MainWindowHandle;
             ShowWindow(hWnd, SW_HIDE); // Hides the window from the taskbar
@@ -446,7 +446,7 @@ namespace Segra.Backend.App
         {
             Log.Information("Loading frontend, app url is " + appUrl);
             // Initialize the PhotinoWindow
-            Window = new PhotinoWindow()
+            MainWindow = new PhotinoWindow()
                 .SetNotificationsEnabled(false) // Disabled due to it creating a second start menu entry with incorrect start path. See https://github.com/tryphotino/photino.NET/issues/85
                 .SetUseOsDefaultSize(false)
                 .SetIconFile(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "icon.ico"))
@@ -455,7 +455,7 @@ namespace Segra.Backend.App
                 .SetResizable(true)
                 .RegisterWebMessageReceivedHandler((sender, message) =>
                 {
-                    Window = (PhotinoWindow)sender!;
+                    MainWindow = (PhotinoWindow)sender!;
                     _ = MessageService.HandleMessage(message);
                 })
                 .Load(appUrl);
@@ -463,15 +463,15 @@ namespace Segra.Backend.App
             Log.Information("Window variable has been set");
 
             // intentional space after name because of https://github.com/tryphotino/photino.NET/issues/106
-            Window.SetTitle("Segra ");
+            MainWindow.SetTitle("Segra ");
 
-            Window.RegisterWindowClosingHandler((sender, eventArgs) =>
+            MainWindow.RegisterWindowClosingHandler((sender, eventArgs) =>
             {
                 HideApplicationWindow();
                 return true;
             });
 
-            Window.WaitForClose();
+            MainWindow.WaitForClose();
         }
 
         private static void StartNamedPipeServer()
@@ -491,12 +491,12 @@ namespace Segra.Backend.App
                                 string? message = reader.ReadLine();
                                 if (message == "SHOW_WINDOW")
                                 {
-                                    if (Window != null)
+                                    if (MainWindow != null)
                                     {
-                                        Window.SetMinimized(false);
-                                        Window.SetTopMost(true);
+                                        MainWindow.SetMinimized(false);
+                                        MainWindow.SetTopMost(true);
                                         Thread.Sleep(200);
-                                        Window.SetTopMost(false);
+                                        MainWindow.SetTopMost(false);
                                         Log.Information("Window brought to foreground directly from pipe server");
                                     }
                                     else

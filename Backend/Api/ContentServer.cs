@@ -243,41 +243,9 @@ namespace Segra.Backend.Api
                     return;
                 }
 
+                // Revert to simple path combining for fMP4 content
                 string filePath = Path.Combine(Settings.Instance.ContentFolder, FolderNames.Sessions, gameFolder, fileName);
 
-                // If it is a request for the virtual manifest (virtual.mpd), generate it dynamically.
-                // This allows us to serve a stitched timeline at the Game Root level.
-                if (fileName.Equals("virtual.mpd", StringComparison.OrdinalIgnoreCase))
-                {
-                    try
-                    {
-                        int bufferDuration = Settings.Instance.GetGameBufferDuration(gameFolder);
-                        string virtualXml = await DashManifestService.GetVirtualManifest(gameFolder, bufferDuration);
-
-                        if (string.IsNullOrEmpty(virtualXml))
-                        {
-                            Log.Warning($"Virtual manifest generation failed/empty for game: {gameFolder}");
-                            response.StatusCode = (int)HttpStatusCode.NotFound;
-                            return;
-                        }
-
-                        response.ContentType = "application/dash+xml";
-                        response.AddHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-
-                        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(virtualXml);
-                        response.ContentLength64 = bytes.Length;
-                        await response.OutputStream.WriteAsync(bytes, 0, bytes.Length);
-                        return;
-                    }
-                    catch (Exception ex)
-                    {
-                        Log.Error($"Error serving virtual manifest: {ex.Message}");
-                        response.StatusCode = (int)HttpStatusCode.InternalServerError;
-                        return;
-                    }
-                }
-
-                // For other files (segments), serve them directly
                 if (!File.Exists(filePath))
                 {
                     Log.Warning($"Live file not found: {filePath}");

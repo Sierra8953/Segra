@@ -342,43 +342,34 @@ namespace Segra.Backend.Obs
 
             try
             {
-                Log.Information($"Saving DASH content ({contentType})...");
-
-                // Use buffer duration logic: save up to ReplayBufferDuration or total duration, whichever is smaller.
-                // In DASH rolling buffer, we only have access to the last 'window' anyway.
+                Log.Information($"Saving fMP4 content ({contentType})...");
 
                 double bufferSeconds = Settings.Instance.GetGameBufferDuration(recording.Game);
                 double currentDuration = (DateTime.Now - recording.StartTime).TotalSeconds;
 
                 double endTime = currentDuration;
-                // Capture as much as possible up to the buffer limit
                 double startTime = Math.Max(0, currentDuration - bufferSeconds);
 
                 var selection = new Selection
                 {
                     Id = Guid.NewGuid().GetHashCode(),
-                    Type = Content.ContentType.Session.ToString(), // Source type is Session (the live dash)
+                    Type = Content.ContentType.Session.ToString(),
                     StartTime = startTime,
                     EndTime = endTime,
-                    // Use "virtual" to instruct ClipService to build the virtual manifest for this clip,
-                    // ensuring we can access the full stitched timeline.
-                    FileName = "virtual",
+                    // Use the actual filename (e.g., "timestamp.mp4").
+                    // ClipService will detect it's an active fMP4 and handle stream copy.
+                    FileName = recording.FileName,
                     Game = recording.Game,
                     Title = $"{titlePrefix} {DateTime.Now:yyyy-MM-dd HH:mm:ss}",
                     IgdbId = 0
                 };
-
-                // Note: ClipService.CreateClips currently defaults to creating a 'Clip' content type.
-                // For 'Session Snapshot', this effectively creates a clip.
-                // To strictly match "Sessions UI", we would need to adjust the metadata type post-creation or update ClipService.
-                // For now, creating a Clip is a safe and functional "snapshot".
 
                 await ClipService.CreateClips(new List<Selection> { selection });
                 return true;
             }
             catch (Exception ex)
             {
-                Log.Error($"Failed to save DASH content: {ex.Message}");
+                Log.Error($"Failed to save fMP4 content: {ex.Message}");
                 return false;
             }
         }
@@ -927,23 +918,20 @@ namespace Segra.Backend.Obs
 
             if (isBackgroundMode)
             {
-                // In DASH mode, we use unique timestamped folders for each session.
-                // Structure: Sessions/{Game}/{Timestamp}/{Timestamp}.mpd
+                // Background mode now uses Fragmented MP4 for fault tolerance and live streaming support
                 string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
                 string sessionSubDir = Path.Combine(sessionDir, timestamp);
                 if (!Directory.Exists(sessionSubDir)) Directory.CreateDirectory(sessionSubDir);
 
-                videoOutputPath = Path.Combine(sessionSubDir, $"{timestamp}.mpd").Replace("\\", "/");
+                // Use .mp4 extension
+                videoOutputPath = Path.Combine(sessionSubDir, $"{timestamp}.mp4").Replace("\\", "/");
 
-                int bufferDuration = Settings.Instance.GetGameBufferDuration(name);
-
-                // Note: startNumber is implicitly 1 for new sessions. The Virtual Manifest will handle stitching.
-                // We do NOT prune here; pruning will be handled by a separate background maintenance task or the Virtual Manifest service.
-
-                obs_data_set_string(outputSettings, "format_name", DashRecordingService.GetDashFormatName());
-                // We reset startNumber to 1 for each fresh session folder
-                obs_data_set_string(outputSettings, "muxer_settings", DashRecordingService.GetDashMuxerSettings(bufferDuration, 1));
-                Log.Information($"Using DASH recording output: {videoOutputPath} with buffer {bufferDuration}s");
+                obs_data_set_string(outputSettings, "format_name", "mp4");
+                // frag_keyframe: Create a fragment at every keyframe (low latency, crash safe)
+                // empty_moov: Write an empty moov atom at the start (required for fMP4)
+                // default_base_moof: Simplifies parsing
+                obs_data_set_string(outputSettings, "muxer_settings", "movflags=frag_keyframe+empty_moov+default_base_moof");
+                Log.Information($"Using fMP4 recording output: {videoOutputPath}");
             }
             else
             {

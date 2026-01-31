@@ -85,39 +85,7 @@ namespace Segra.Backend.Media
                             inputFilePath = flatDashPath;
                             isDash = true;
                         }
-                        else if (selection.FileName.Equals("virtual", StringComparison.OrdinalIgnoreCase) ||
-                                 selection.FileName.Equals("virtual.mpd", StringComparison.OrdinalIgnoreCase) ||
-                                 selection.FileName.EndsWith(".mpd", StringComparison.OrdinalIgnoreCase)) // Catch-all for other mpd names not found on disk
-                        {
-                            // Try to generate a virtual manifest if the file doesn't exist
-                            // This supports clipping from the "Live" virtual timeline
-                            string gameRoot = Path.Combine(videoFolder, FolderNames.Sessions, inputGameFolder);
-
-                            // Only attempt if the game session folder exists
-                            if (Directory.Exists(gameRoot))
-                            {
-                                int bufferDuration = Settings.Instance.GetGameBufferDuration(selection.Game);
-                                string virtualXml = await DashManifestService.GetVirtualManifest(selection.Game, bufferDuration);
-
-                                if (!string.IsNullOrEmpty(virtualXml))
-                                {
-                                    // Save to the Game Root so relative paths (Timestamp/chunk.m4s) resolve correctly
-                                    string tempMpdName = $"temp_virtual_{Guid.NewGuid()}.mpd";
-                                    string tempMpdPath = Path.Combine(gameRoot, tempMpdName);
-                                    await File.WriteAllTextAsync(tempMpdPath, virtualXml);
-
-                                    inputFilePath = tempMpdPath;
-                                    isDash = true;
-                                    tempManifestsToDelete.Add(tempMpdPath);
-                                    Log.Information($"Generated temporary virtual manifest for clipping: {tempMpdPath}");
-                                }
-                                else
-                                {
-                                    Log.Warning($"Failed to generate virtual manifest for game: {selection.Game}");
-                                    // Fall through to error
-                                }
-                            }
-                        }
+                        // Fallback logic removed as DASH is replaced by fMP4
 
                         if (!File.Exists(inputFilePath))
                         {
