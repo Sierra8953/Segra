@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useLayoutEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { MdPlayArrow, MdPause, MdVolumeUp, MdVolumeOff, MdVolumeDown } from 'react-icons/md';
 import { sendMessageToBackend } from '../Utils/MessageUtils';
 

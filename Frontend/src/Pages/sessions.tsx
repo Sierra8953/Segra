@@ -86,48 +86,10 @@ export default function Sessions() {
   }, [activeGame, activeGameContent, recording]);
 
   const getVideoUrl = (video: Content) => {
-    // If it's a Dash manifest
-    if (video.isLive || video.filePath.endsWith('.mpd')) {
-        // Simplified URL construction for Single Session per Game
-        // The file is located at .../Sessions/{Game}/{Game}.mpd
-        // The backend expects /api/live/{GameFolder}/{FileName}
-        // Since FileName is now just {Game}.mpd (no nested timestamp folder), we can rely on standard construction.
-
-        // However, we still need to parse the Game name from the path properly if possible,
-        // or rely on video.game if it's reliable.
-        // Let's stick to parsing from path to be safe against metadata/path mismatch, using the robust logic.
-
-        const normalizedPath = video.filePath.replace(/\\/g, '/');
-
-        // Check for 'Full Sessions' (standard) or 'Sessions' (legacy/fallback)
-        let splitIndex = normalizedPath.indexOf('/Full Sessions/');
-        let segmentLength = '/Full Sessions/'.length;
-
-        if (splitIndex === -1) {
-            splitIndex = normalizedPath.indexOf('/Sessions/');
-            segmentLength = '/Sessions/'.length;
-        }
-
-        // For DASH content (Live or recorded sessions), we always request the "virtual.mpd"
-        // This serves a dynamically patched manifest that stitches all available segments for the game
-        // into a single timeline.
-        // We ignore the specific file path on disk (which points to the latest chunk) and instead
-        // point to the Game Root so relative segment paths (Timestamp/chunk.m4s) resolve correctly.
-        if (splitIndex !== -1) {
-             const relativePath = normalizedPath.substring(splitIndex + segmentLength);
-             const parts = relativePath.split('/');
-             if (parts.length >= 1) {
-                 const game = parts[0];
-                 // Force usage of virtual.mpd at the game root level
-                 return `http://localhost:2222/api/live/${encodeURIComponent(game)}/virtual.mpd?t=${refreshKey}`;
-             }
-        }
-
-        // Fallback if path parsing fails
-        return `http://localhost:2222/api/content?input=${encodeURIComponent(video.filePath)}&type=session`;
-    }
-    // Standard video file
-    return `http://localhost:2222/api/content?input=${encodeURIComponent(video.filePath)}&type=session`;
+    // For embedded MPV, we pass the local file path directly.
+    // This allows MPV to read growing files (fMP4) natively from disk without HTTP limitation.
+    // video.filePath is the absolute local path.
+    return video.filePath;
   };
 
   const handleCreateClip = () => {
