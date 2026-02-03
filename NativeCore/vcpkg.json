@@ -1,0 +1,11 @@
+{
+  "name": "streamdvr-native",
+  "version-string": "0.1.0",
+  "dependencies": [
+    "qtbase",
+    "nlohmann-json",
+    "spdlog",
+    "fmt"
+  ],
+  "builtin-baseline": "501db0f17ef6df184fcdbfbe0f87cde2313b6ab1"
+}
